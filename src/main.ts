@@ -1,5 +1,5 @@
 import './style.css';
-import { COLS, ROWS } from './game/board';
+import { COLS, ROWS, activeCellMap } from './game/board';
 import {
   clearSelection,
   createInitialState,
@@ -7,6 +7,7 @@ import {
   hardDrop,
   moveLeft,
   moveRight,
+  rotate,
   selectionWord,
   softDrop,
   startGame,
@@ -26,6 +27,9 @@ let feedbackClearTimer: number | null = null;
 let needsRender = true;
 let lastRenderedPhase = state.phase;
 let lastTimerText = '';
+let lastSubmitAt = 0;
+let lastSubmitSig = '';
+
 
 function brandSpans(text: string): string {
   return [...text]
@@ -42,12 +46,12 @@ function renderTitle(): string {
     <div class="atmosphere" aria-hidden="true"></div>
     <main class="screen title-screen">
       <h1 class="brand" aria-label="Letterdrop">${brandSpans('Letterdrop')}</h1>
-      <p class="tagline">Falling letters. Rising words. Two minutes to spell your way up the board.</p>
+      <p class="tagline">Falling letter blocks. Rising words. Two minutes to spell your way up the board.</p>
       <ul class="howto">
-        <li><strong>← → ↓</strong> move · <strong>Space</strong> hard drop</li>
-        <li><strong>Click / tap</strong> adjacent letters to spell</li>
+        <li><strong>← → ↓</strong> move · <strong>↑ / X</strong> rotate · <strong>Space</strong> hard drop</li>
+        <li><strong>Click / tap</strong> adjacent landed letters to spell</li>
         <li><strong>Enter</strong> submit · <strong>Esc</strong> clear selection</li>
-        <li>Longer words &amp; rare letters score more</li>
+        <li>Seven tetromino shapes — each cell carries a letter</li>
       </ul>
       <div class="title-actions">
         <button type="button" class="btn" data-action="start">Play</button>
@@ -76,32 +80,24 @@ function renderEnd(): string {
   `;
 }
 
-function cellClass(row: number, col: number): string {
-  const classes = ['cell'];
-  const active = state.active;
-  if (active && active.row === row && active.col === col) {
-    classes.push('active');
-  } else if (state.board[row][col]) {
-    classes.push('filled');
-  }
-  const selIdx = state.selection.findIndex((s) => s.row === row && s.col === col);
-  if (selIdx >= 0) classes.push('selected');
-  return classes.join(' ');
-}
-
 function renderBoard(): string {
+  const activeMap = activeCellMap(state.active);
   const cells: string[] = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      let letter = state.board[r][c] ?? '';
-      if (state.active && state.active.row === r && state.active.col === c) {
-        letter = state.active.letter;
-      }
+      const key = `${r},${c}`;
+      const activeLetter = activeMap.get(key);
+      const boarded = state.board[r][c];
+      const letter = activeLetter ?? boarded ?? '';
+      const classes = ['cell'];
+      if (activeLetter) classes.push('active');
+      else if (boarded) classes.push('filled');
       const selIdx = state.selection.findIndex((s) => s.row === r && s.col === c);
+      if (selIdx >= 0) classes.push('selected');
       const order =
         selIdx >= 0 ? `<span class="sel-order">${selIdx + 1}</span>` : '';
       cells.push(
-        `<button type="button" class="${cellClass(r, c)}" data-row="${r}" data-col="${c}" aria-label="${letter ? `Letter ${letter}` : 'Empty'}">${letter}${order}</button>`,
+        `<button type="button" class="${classes.join(' ')}" data-row="${r}" data-col="${c}" aria-label="${letter ? `Letter ${letter}` : 'Empty'}">${letter}${order}</button>`,
       );
     }
   }
@@ -150,14 +146,14 @@ function renderPlay(): string {
         </div>
       </div>
       <div class="touch-pad" aria-label="Move controls">
-        <span class="spacer"></span>
+        <button type="button" class="btn" data-action="rotate">↻</button>
         <button type="button" class="btn" data-action="hard">↓↓</button>
         <span class="spacer"></span>
         <button type="button" class="btn" data-action="left">←</button>
         <button type="button" class="btn" data-action="down">↓</button>
         <button type="button" class="btn" data-action="right">→</button>
       </div>
-      <p class="hint-keys">Arrows move · Space drop · Enter submit · Esc clear</p>
+      <p class="hint-keys">Arrows move · ↑ rotate · Space drop · Enter submit · Esc clear</p>
     </main>
   `;
 }
@@ -197,12 +193,53 @@ function scheduleFeedbackClear(): void {
   }
 }
 
+function handleSubmit(): boolean {
+  const now = performance.now();
+  const sig = `${selectionWord(state)}:${state.selection.map((s) => `${s.row},${s.col}`).join(';')}`;
+  // Only ignore duplicate activations of the same selection (Enter + button).
+  if (now - lastSubmitAt < 280 && sig === lastSubmitSig) return false;
+  lastSubmitAt = now;
+  lastSubmitSig = sig;
+  const ok = submitWord(state);
+  scheduleFeedbackClear();
+  markDirty();
+  return ok;
+}
+
 function onStart(): void {
   startGame(state);
   lastTs = performance.now();
   dropAccum = 0;
   markDirty();
 }
+
+declare global {
+  interface Window {
+    __letterdrop?: {
+      state: GameState;
+      plant: (cells: Array<{ row: number; col: number; letter: string }>) => void;
+      submit: () => boolean;
+      select: (row: number, col: number) => void;
+    };
+  }
+}
+
+window.__letterdrop = {
+  state,
+  plant(cells) {
+    for (const { row, col, letter } of cells) {
+      state.board[row][col] = letter.toUpperCase();
+    }
+    markDirty();
+  },
+  select(row, col) {
+    toggleSelect(state, row, col);
+    markDirty();
+  },
+  submit() {
+    return handleSubmit();
+  },
+};
 
 app.addEventListener('click', (e) => {
   const target = (e.target as HTMLElement).closest<HTMLElement>(
@@ -221,14 +258,14 @@ app.addEventListener('click', (e) => {
     return;
   }
   if (action === 'submit') {
-    submitWord(state);
-    scheduleFeedbackClear();
-    markDirty();
+    handleSubmit();
+    (document.activeElement as HTMLElement | null)?.blur?.();
     return;
   }
   if (action === 'clear') {
     clearSelection(state);
     markDirty();
+    (document.activeElement as HTMLElement | null)?.blur?.();
     return;
   }
   if (action === 'left') {
@@ -248,6 +285,11 @@ app.addEventListener('click', (e) => {
   }
   if (action === 'hard') {
     hardDrop(state);
+    markDirty();
+    return;
+  }
+  if (action === 'rotate') {
+    rotate(state);
     markDirty();
     return;
   }
@@ -288,6 +330,15 @@ window.addEventListener('keydown', (e) => {
       softDrop(state);
       markDirty();
       break;
+    case 'ArrowUp':
+    case 'x':
+    case 'X':
+    case 'w':
+    case 'W':
+      e.preventDefault();
+      rotate(state);
+      markDirty();
+      break;
     case ' ':
       e.preventDefault();
       hardDrop(state);
@@ -295,9 +346,8 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'Enter':
       e.preventDefault();
-      submitWord(state);
-      scheduleFeedbackClear();
-      markDirty();
+      handleSubmit();
+      (document.activeElement as HTMLElement | null)?.blur?.();
       break;
     case 'Escape':
     case 'Backspace':

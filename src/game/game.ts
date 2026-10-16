@@ -1,18 +1,21 @@
 import { WORD_SET } from '../data/words';
-import { randomLetter, scoreWord } from '../data/letters';
+import { scoreWord } from '../data/letters';
 import {
   COLS,
   ROWS,
   areAdjacent,
-  boardHasSpawnSpace,
   createEmptyBoard,
   isBoardFull,
   lockPiece,
+  pieceFits,
   removeCellsAndApplyGravity,
+  spawnPiece,
   tryMoveDown,
   tryMoveHorizontal,
+  tryRotate,
 } from './board';
 import type { ActivePiece, Cell } from './board';
+import { absoluteCells } from './pieces';
 
 export type GamePhase = 'title' | 'playing' | 'ended';
 
@@ -50,13 +53,17 @@ export function createInitialState(): GameState {
   };
 }
 
-function spawnPiece(board: Cell[][]): ActivePiece | null {
-  const candidates = Array.from({ length: COLS }, (_, c) => c).filter((c) =>
-    boardHasSpawnSpace(board, c),
-  );
-  if (candidates.length === 0) return null;
-  const col = candidates[Math.floor(Math.random() * candidates.length)]!;
-  return { col, row: 0, letter: randomLetter() };
+function lockAndSpawn(state: GameState): void {
+  if (state.active) {
+    lockPiece(state.board, state.active);
+    state.active = null;
+  }
+  if (isBoardFull(state.board)) {
+    endGame(state, 'full');
+    return;
+  }
+  state.active = spawnPiece(state.board);
+  if (!state.active) endGame(state, 'full');
 }
 
 export function startGame(state: GameState): void {
@@ -85,16 +92,7 @@ export function endGame(state: GameState, reason: 'time' | 'full'): void {
 export function tickDrop(state: GameState): void {
   if (state.phase !== 'playing' || !state.active) return;
   if (!tryMoveDown(state.board, state.active)) {
-    lockPiece(state.board, state.active);
-    state.active = null;
-    if (isBoardFull(state.board)) {
-      endGame(state, 'full');
-      return;
-    }
-    state.active = spawnPiece(state.board);
-    if (!state.active) {
-      endGame(state, 'full');
-    }
+    lockAndSpawn(state);
   }
 }
 
@@ -103,14 +101,7 @@ export function hardDrop(state: GameState): void {
   while (tryMoveDown(state.board, state.active)) {
     /* fall */
   }
-  lockPiece(state.board, state.active);
-  state.active = null;
-  if (isBoardFull(state.board)) {
-    endGame(state, 'full');
-    return;
-  }
-  state.active = spawnPiece(state.board);
-  if (!state.active) endGame(state, 'full');
+  lockAndSpawn(state);
 }
 
 export function moveLeft(state: GameState): void {
@@ -126,15 +117,13 @@ export function moveRight(state: GameState): void {
 export function softDrop(state: GameState): void {
   if (state.phase !== 'playing' || !state.active) return;
   if (!tryMoveDown(state.board, state.active)) {
-    lockPiece(state.board, state.active);
-    state.active = null;
-    if (isBoardFull(state.board)) {
-      endGame(state, 'full');
-      return;
-    }
-    state.active = spawnPiece(state.board);
-    if (!state.active) endGame(state, 'full');
+    lockAndSpawn(state);
   }
+}
+
+export function rotate(state: GameState): void {
+  if (state.phase !== 'playing' || !state.active) return;
+  tryRotate(state.board, state.active);
 }
 
 export function clearSelection(state: GameState): void {
@@ -152,7 +141,6 @@ export function toggleSelect(
 
   const idx = state.selection.findIndex((s) => s.row === row && s.col === col);
   if (idx >= 0) {
-    // Allow deselect only from the end (undo path)
     if (idx === state.selection.length - 1) {
       state.selection.pop();
     }
@@ -171,7 +159,6 @@ export function toggleSelect(
     return;
   }
 
-  // Don't reuse a cell already in the path
   if (state.selection.some((s) => s.row === row && s.col === col)) return;
 
   state.selection.push({ row, col });
@@ -185,9 +172,27 @@ export function selectionWord(state: GameState): string {
     .join('');
 }
 
+/** If gravity filled cells under the active piece, nudge it up into free space. */
+function resolveActiveOverlap(state: GameState): void {
+  if (!state.active) return;
+  while (state.active.row >= 0 && !pieceFits(state.board, state.active)) {
+    state.active.row -= 1;
+  }
+  if (state.active.row < 0 || !pieceFits(state.board, state.active)) {
+    endGame(state, 'full');
+  }
+}
+
 export function submitWord(state: GameState): boolean {
   if (state.phase !== 'playing') return false;
   const word = selectionWord(state).toLowerCase();
+
+  if (state.selection.length === 0) {
+    if (state.feedbackKind === 'ok') return false;
+    state.feedback = 'Select adjacent letters, then submit.';
+    state.feedbackKind = 'error';
+    return false;
+  }
 
   if (state.selection.length < 3) {
     state.feedback = 'Words need at least 3 letters.';
@@ -202,18 +207,24 @@ export function submitWord(state: GameState): boolean {
   }
 
   const points = scoreWord(word);
-  removeCellsAndApplyGravity(state.board, state.selection);
+  const cleared = removeCellsAndApplyGravity(state.board, state.selection);
   state.selection = [];
   state.score += points;
   state.wordsFound += 1;
   state.feedback = `+${points} · ${word.toUpperCase()}`;
   state.feedbackKind = 'ok';
+  resolveActiveOverlap(state);
 
-  // Speed up slightly as words are found
   state.dropIntervalMs = Math.max(
     MIN_DROP_MS,
     INITIAL_DROP_MS - state.wordsFound * 25,
   );
+
+  if (cleared.length === 0) {
+    state.feedback = 'Could not clear those letters — try again.';
+    state.feedbackKind = 'error';
+    return false;
+  }
   return true;
 }
 
@@ -231,3 +242,5 @@ export function formatTime(ms: number): string {
   const s = totalSec % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
+
+export { absoluteCells };

@@ -162,6 +162,24 @@
     return true;
   }
 
+  function canMoveDown(board, piece) {
+    return !!(piece && pieceFits(board, piece, piece.row + 1, piece.col));
+  }
+
+  /** Lowest row the piece can occupy without colliding. */
+  function landingRow(board, piece) {
+    if (!piece) return 0;
+    var row = piece.row;
+    while (pieceFits(board, piece, row + 1, piece.col)) row += 1;
+    return row;
+  }
+
+  function lockAtRow(state, row) {
+    if (!state.active) return;
+    state.active.row = row;
+    lockAndSpawn(state);
+  }
+
   function tryMoveHorizontal(board, piece, dir) {
     if (!pieceFits(board, piece, piece.row, piece.col + dir)) return false;
     piece.col += dir;
@@ -706,6 +724,14 @@
     endGame: endGame,
     tickDrop: tickDrop,
     hardDrop: hardDrop,
+    canMoveDown: function (state) {
+      return canMoveDown(state.board, state.active);
+    },
+    landingRow: function (state) {
+      return landingRow(state.board, state.active);
+    },
+    lockAtRow: lockAtRow,
+    absoluteCells: absoluteCells,
     moveLeft: moveLeft,
     moveRight: moveRight,
     softDrop: softDrop,

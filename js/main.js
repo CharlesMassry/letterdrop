@@ -23,15 +23,13 @@
   var clearAnimToken = 0;
   var settleAnimTimer = null;
   var settleAnimToken = 0;
-
-  function brandSpans(text) {
-    var out = '';
-    for (var i = 0; i < text.length; i++) {
-      var ch = text.charAt(i);
-      out += '<span>' + (ch === ' ' ? '&nbsp;' : ch) + '</span>';
-    }
-    return out;
-  }
+  /** Freeze full-board HTML rebuilds while clear/settle CSS runs. */
+  var boardMotionLock = null;
+  /** @type {null|{startVisual:number,endRow:number,startTs:number,durationMs:number}} */
+  var hardDropAnim = null;
+  var cachedMetrics = null;
+  var settleFxStarted = false;
+  var forceBoardRebuild = false;
 
   function cancelAnimTimers() {
     clearAnimToken += 1;
@@ -44,10 +42,15 @@
       window.clearTimeout(settleAnimTimer);
       settleAnimTimer = null;
     }
+    hardDropAnim = null;
+    boardMotionLock = null;
+    settleFxStarted = false;
+    cachedMetrics = null;
   }
 
   function scheduleClearAnimation() {
     if (!state.clearing || clearAnimTimer !== null) return;
+    boardMotionLock = 'clearing';
     var token = ++clearAnimToken;
     clearAnimTimer = window.setTimeout(function () {
       if (token !== clearAnimToken) return;
@@ -55,13 +58,15 @@
       if (!state.clearing) return;
       G.finishClearing(state);
       scheduleFeedbackClear();
-      // Settling and/or another clear (cascade) pick up via markDirty.
-      markDirty();
+      boardMotionLock = state.settling ? 'settling' : null;
+      settleFxStarted = false;
+      markDirty(true);
     }, G.CLEAR_ANIM_MS);
   }
 
   function scheduleSettleAnimation() {
     if (!state.settling || settleAnimTimer !== null) return;
+    boardMotionLock = 'settling';
     var token = ++settleAnimToken;
     var ms = state.settling.durationMs || 280;
     settleAnimTimer = window.setTimeout(function () {
@@ -69,14 +74,188 @@
       settleAnimTimer = null;
       if (!state.settling) return;
       G.finishSettling(state);
-      markDirty();
+      boardMotionLock = state.clearing ? 'clearing' : null;
+      settleFxStarted = false;
+      markDirty(true);
     }, ms);
   }
 
-  function markDirty() {
+  /** @param {boolean=} forceBoard rebuild board even during motion lock (phase change) */
+  function markDirty(forceBoard) {
     needsRender = true;
+    if (forceBoard) {
+      forceBoardRebuild = true;
+      cachedMetrics = null;
+    }
     if (state.clearing) scheduleClearAnimation();
     if (state.settling) scheduleSettleAnimation();
+  }
+
+  function dropFrac() {
+    if (!state.active || hardDropAnim || state.clearing || state.settling) return 0;
+    if (!G.canMoveDown(state)) return 0;
+    var interval = state.dropIntervalMs || 1;
+    var f = dropAccum / interval;
+    if (f < 0) return 0;
+    if (f > 0.999) return 0.999;
+    return f;
+  }
+
+  function visualActiveRow() {
+    if (!state.active) return 0;
+    if (hardDropAnim) {
+      var t = (performance.now() - hardDropAnim.startTs) / hardDropAnim.durationMs;
+      if (t < 0) t = 0;
+      if (t > 1) t = 1;
+      var eased = 1 - Math.pow(1 - t, 3);
+      return (
+        hardDropAnim.startVisual +
+        (hardDropAnim.endRow - hardDropAnim.startVisual) * eased
+      );
+    }
+    return state.active.row + dropFrac();
+  }
+
+  function readBoardMetrics(boardEl) {
+    if (!boardEl) return null;
+    var slot = boardEl.querySelector('.cell');
+    if (!slot) return null;
+    var cs = window.getComputedStyle(boardEl);
+    var padL = parseFloat(cs.paddingLeft) || 0;
+    var padT = parseFloat(cs.paddingTop) || 0;
+    var gap = parseFloat(cs.rowGap || cs.gap) || 0;
+    var rect = slot.getBoundingClientRect();
+    return {
+      padL: padL,
+      padT: padT,
+      gap: gap,
+      cellW: rect.width,
+      cellH: rect.height,
+      stepX: rect.width + gap,
+      stepY: rect.height + gap,
+    };
+  }
+
+  function getMetrics() {
+    if (cachedMetrics) return cachedMetrics;
+    var boardEl = app.querySelector('.board');
+    cachedMetrics = readBoardMetrics(boardEl);
+    return cachedMetrics;
+  }
+
+  function tileInner(letter, kind) {
+    return (
+      '<span class="cell-letter">' +
+      letter +
+      '</span><span class="cell-val">' +
+      G.letterValue(letter) +
+      '</span>'
+    );
+  }
+
+  function placeFx(el, row, col, metrics) {
+    el.style.width = metrics.cellW + 'px';
+    el.style.height = metrics.cellH + 'px';
+    el.style.transform =
+      'translate(' +
+      (metrics.padL + col * metrics.stepX) +
+      'px,' +
+      (metrics.padT + row * metrics.stepY) +
+      'px)';
+  }
+
+  function syncActiveLayer() {
+    var layer = app.querySelector('[data-fx="active"]');
+    if (!layer) return;
+    if (!state.active || state.clearing || state.settling) {
+      if (layer.childNodes.length) layer.innerHTML = '';
+      return;
+    }
+    var metrics = getMetrics();
+    if (!metrics) return;
+    var cells = G.absoluteCells(state.active);
+    var vRow = visualActiveRow();
+    var baseRow = state.active.row;
+    var i;
+
+    if (layer.childNodes.length !== cells.length) {
+      var html = '';
+      for (i = 0; i < cells.length; i++) {
+        html +=
+          '<div class="fx-tile fx-active" data-fx-i="' +
+          i +
+          '">' +
+          tileInner(cells[i].letter) +
+          '</div>';
+      }
+      layer.innerHTML = html;
+    } else {
+      for (i = 0; i < cells.length; i++) {
+        var node = layer.childNodes[i];
+        var letterEl = node.querySelector('.cell-letter');
+        var valEl = node.querySelector('.cell-val');
+        if (letterEl && letterEl.textContent !== cells[i].letter) {
+          letterEl.textContent = cells[i].letter;
+          if (valEl) valEl.textContent = String(G.letterValue(cells[i].letter));
+        }
+      }
+    }
+
+    for (i = 0; i < cells.length; i++) {
+      var fracRow = vRow + (cells[i].row - baseRow);
+      placeFx(layer.childNodes[i], fracRow, cells[i].col, metrics);
+    }
+  }
+
+  function startSettleFx() {
+    if (settleFxStarted || !state.settling) return;
+    var layer = app.querySelector('[data-fx="settle"]');
+    var metrics = getMetrics();
+    if (!layer || !metrics) return;
+    settleFxStarted = true;
+    var moves = state.settling.moves;
+    var html = '';
+    var i;
+    for (i = 0; i < moves.length; i++) {
+      html +=
+        '<div class="fx-tile fx-settle" data-settle-i="' +
+        i +
+        '">' +
+        tileInner(moves[i].letter) +
+        '</div>';
+    }
+    layer.innerHTML = html;
+
+    for (i = 0; i < moves.length; i++) {
+      var el = layer.childNodes[i];
+      el.style.transition = 'none';
+      placeFx(el, moves[i].fromRow, moves[i].col, metrics);
+    }
+
+    // Double rAF so the browser commits the start transform before easing to the end.
+    window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(function () {
+        if (!state.settling || !layer) return;
+        var m2 = getMetrics() || metrics;
+        for (var j = 0; j < moves.length; j++) {
+          var tile = layer.childNodes[j];
+          if (!tile) continue;
+          var ms = moves[j].durationMs || state.settling.durationMs || 400;
+          tile.style.transition =
+            'transform ' + ms + 'ms var(--settle-ease, cubic-bezier(0.22, 1, 0.36, 1))';
+          placeFx(tile, moves[j].toRow, moves[j].col, m2);
+        }
+      });
+    });
+  }
+
+  function brandSpans(text) {
+    var out = '';
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      out += '<span>' + (ch === ' ' ? '&nbsp;' : ch) + '</span>';
+    }
+    return out;
   }
 
   function renderTitle() {
@@ -151,29 +330,33 @@
     );
   }
 
+  function settleDestKeys() {
+    var keys = {};
+    if (!state.settling) return keys;
+    for (var i = 0; i < state.settling.moves.length; i++) {
+      var m = state.settling.moves[i];
+      keys[m.toRow + ',' + m.col] = true;
+    }
+    return keys;
+  }
+
   function renderBoard() {
-    var activeMap = G.activeCellMap(state.active);
     var clearing = G.clearingKeySet(state);
-    var settleMap = G.settlingMoveMap(state);
-    var settleMs = state.settling ? state.settling.durationMs : 0;
+    var hideSettling = settleDestKeys();
     var cells = [];
     for (var r = 0; r < G.ROWS; r++) {
       for (var c = 0; c < G.COLS; c++) {
         var key = r + ',' + c;
         var clearingLetter = clearing[key];
-        var settleMove = clearingLetter ? null : settleMap[key];
-        var activeLetter = clearingLetter || settleMove ? null : activeMap[key];
-        var boarded = clearingLetter || state.board[r][c];
-        var letter = activeLetter || boarded || '';
+        var boarded =
+          clearingLetter ||
+          (hideSettling[key] ? null : state.board[r][c]);
+        var letter = clearingLetter || boarded || '';
         var classes = ['cell'];
         if (clearingLetter) classes.push('filled', 'disintegrating');
-        else if (activeLetter) classes.push('active');
-        else if (boarded) {
-          classes.push('filled');
-          if (settleMove) classes.push('settling');
-        }
+        else if (boarded) classes.push('filled');
         var selIdx = -1;
-        if (!clearingLetter && !settleMove) {
+        if (!clearingLetter && !hideSettling[key]) {
           for (var i = 0; i < state.selection.length; i++) {
             if (state.selection[i].row === r && state.selection[i].col === c) {
               selIdx = i;
@@ -188,20 +371,6 @@
           letter
             ? '<span class="cell-val">' + G.letterValue(letter) + '</span>'
             : '';
-        var styleAttr = '';
-        if (settleMove) {
-          var fall = settleMove.toRow - settleMove.fromRow;
-          if (fall < 1) fall = 1;
-          var tileMs = settleMove.durationMs || settleMs;
-          styleAttr =
-            ' style="--fall-cells:' +
-            fall +
-            ';--settle-ms:' +
-            tileMs +
-            'ms;animation:cascade-settle ' +
-            tileMs +
-            'ms var(--settle-ease) both"';
-        }
         cells.push(
           '<button type="button" class="' +
             classes.join(' ') +
@@ -210,8 +379,7 @@
             '" data-col="' +
             c +
             '"' +
-            styleAttr +
-            (clearingLetter || settleMove ? ' disabled' : '') +
+            (clearingLetter || hideSettling[key] ? ' disabled' : '') +
             ' aria-label="' +
             (letter ? 'Letter ' + letter + ', ' + G.letterValue(letter) + ' points' : 'Empty') +
             '">' +
@@ -223,7 +391,15 @@
         );
       }
     }
-    return '<div class="board" role="grid" aria-label="Letter board">' + cells.join('') + '</div>';
+    return (
+      '<div class="board" role="grid" aria-label="Letter board">' +
+      '<div class="board-grid">' +
+      cells.join('') +
+      '</div>' +
+      '<div class="board-fx" data-fx="settle" aria-hidden="true"></div>' +
+      '<div class="board-fx" data-fx="active" aria-hidden="true"></div>' +
+      '</div>'
+    );
   }
 
   function renderFoundWords() {
@@ -317,10 +493,70 @@
     );
   }
 
+  function patchHudChrome() {
+    updateTimerHud();
+    var scoreEl = app.querySelector('[data-hud="score"]');
+    if (scoreEl) scoreEl.textContent = String(state.score);
+    var wordsEl = app.querySelector('[data-hud="words"]');
+    if (wordsEl) wordsEl.textContent = String(state.wordsFound);
+    var fb = app.querySelector('[data-hud="feedback"]');
+    if (fb) {
+      fb.textContent = state.feedback || '';
+      fb.className = 'feedback';
+      if (state.feedbackKind === 'ok') fb.className += ' ok';
+      if (state.feedbackKind === 'error') fb.className += ' error';
+    }
+    var wordEl = app.querySelector('[data-hud="word"]');
+    if (wordEl) {
+      var word = G.selectionWord(state);
+      wordEl.className = 'word-preview';
+      if (!word) wordEl.className += ' empty';
+      if (state.selectionValid) wordEl.className += ' valid';
+      wordEl.textContent = !word
+        ? 'Line up a word — or tap letters…'
+        : state.selectionValid
+          ? word + ' ✓'
+          : word;
+    }
+    var foundHost = app.querySelector('[data-hud="found"]');
+    if (foundHost) {
+      var wrap = document.createElement('div');
+      wrap.innerHTML = renderFoundWords();
+      foundHost.replaceWith(wrap.firstChild);
+    }
+  }
+
   function render() {
-    if (state.phase === 'title') app.innerHTML = renderTitle();
-    else if (state.phase === 'ended') app.innerHTML = renderEnd();
-    else app.innerHTML = renderPlay();
+    if (state.phase === 'title') {
+      app.innerHTML = renderTitle();
+      boardMotionLock = null;
+      forceBoardRebuild = false;
+    } else if (state.phase === 'ended') {
+      app.innerHTML = renderEnd();
+      boardMotionLock = null;
+      forceBoardRebuild = false;
+    } else if (
+      lastRenderedPhase === 'playing' &&
+      boardMotionLock &&
+      !forceBoardRebuild
+    ) {
+      // Mid clear/settle: patch HUD only — never thrash the board DOM.
+      patchHudChrome();
+    } else {
+      forceBoardRebuild = false;
+      app.innerHTML = renderPlay();
+      cachedMetrics = null;
+      settleFxStarted = false;
+      if (state.settling) {
+        boardMotionLock = 'settling';
+        startSettleFx();
+      } else if (state.clearing) {
+        boardMotionLock = 'clearing';
+      } else {
+        boardMotionLock = null;
+      }
+      syncActiveLayer();
+    }
     lastRenderedPhase = state.phase;
     needsRender = false;
   }
@@ -345,7 +581,9 @@
         if (state.phase === 'playing' && state.feedbackKind !== 'info') {
           state.feedback = null;
           state.feedbackKind = null;
-          markDirty();
+          // HUD-only — do not rebuild board / restart settle.
+          if (boardMotionLock) patchHudChrome();
+          else markDirty();
         }
       }, 2200);
     }
@@ -366,8 +604,62 @@
     lastSubmitSig = sig;
     var ok = G.submitWord(state);
     scheduleFeedbackClear();
-    markDirty();
+    markDirty(true);
     return ok;
+  }
+
+  function beginHardDrop() {
+    if (
+      state.phase !== 'playing' ||
+      !state.active ||
+      state.clearing ||
+      state.settling ||
+      hardDropAnim
+    ) {
+      return;
+    }
+    var startVisual = visualActiveRow();
+    var endRow = G.landingRow(state);
+    var dist = Math.max(0, endRow - startVisual);
+    if (dist < 0.05) {
+      dropAccum = 0;
+      G.lockAtRow(state, endRow);
+      markDirty(true);
+      return;
+    }
+    hardDropAnim = {
+      startVisual: startVisual,
+      endRow: endRow,
+      startTs: performance.now(),
+      durationMs: Math.min(320, 70 + dist * 32),
+    };
+  }
+
+  function finishHardDropIfDue(ts) {
+    if (!hardDropAnim) return false;
+    if (ts - hardDropAnim.startTs < hardDropAnim.durationMs) return false;
+    var endRow = hardDropAnim.endRow;
+    hardDropAnim = null;
+    dropAccum = 0;
+    G.lockAtRow(state, endRow);
+    markDirty(true);
+    return true;
+  }
+
+  function softDropBoost() {
+    if (
+      state.phase !== 'playing' ||
+      !state.active ||
+      state.clearing ||
+      state.settling ||
+      hardDropAnim
+    ) {
+      return;
+    }
+    // Advance smoothly within the fall interval instead of jumping a cell.
+    dropAccum += Math.max(55, state.dropIntervalMs * 0.42);
+    if (processDropTicks()) markDirty(true);
+    else syncActiveLayer();
   }
 
   function onStart() {
@@ -375,7 +667,7 @@
     G.startGame(state);
     lastTs = performance.now();
     dropAccum = 0;
-    markDirty();
+    markDirty(true);
   }
 
   function resetTitle() {
@@ -384,29 +676,33 @@
     for (var k in fresh) {
       if (Object.prototype.hasOwnProperty.call(fresh, k)) state[k] = fresh[k];
     }
-    markDirty();
+    markDirty(true);
   }
 
   window.__letterdrop = {
     state: state,
     plant: function (cells) {
       G.plant(state, cells);
-      markDirty();
+      markDirty(true);
     },
     select: function (row, col) {
       G.toggleSelect(state, row, col);
-      markDirty();
+      markDirty(true);
     },
     submit: function () {
       return handleSubmit();
     },
     finishClearing: function () {
       G.finishClearing(state);
-      markDirty();
+      boardMotionLock = state.settling ? 'settling' : null;
+      settleFxStarted = false;
+      markDirty(true);
     },
     finishSettling: function () {
       G.finishSettling(state);
-      markDirty();
+      boardMotionLock = state.clearing ? 'clearing' : null;
+      settleFxStarted = false;
+      markDirty(true);
     },
   };
 
@@ -426,28 +722,30 @@
       return;
     }
     if (action === 'left') {
+      if (hardDropAnim) return;
       G.moveLeft(state);
-      markDirty();
+      syncActiveLayer();
       return;
     }
     if (action === 'right') {
+      if (hardDropAnim) return;
       G.moveRight(state);
-      markDirty();
+      syncActiveLayer();
       return;
     }
     if (action === 'down') {
-      G.softDrop(state);
-      markDirty();
+      softDropBoost();
       return;
     }
     if (action === 'hard') {
-      G.hardDrop(state);
-      markDirty();
+      beginHardDrop();
       return;
     }
     if (action === 'rotate') {
+      if (hardDropAnim) return;
       G.rotate(state);
-      markDirty();
+      dropAccum = Math.min(dropAccum, state.dropIntervalMs * 0.85);
+      syncActiveLayer();
       return;
     }
 
@@ -458,7 +756,7 @@
         Number(target.getAttribute('data-col')),
       );
       scheduleFeedbackClear();
-      markDirty();
+      markDirty(true);
     }
   });
 
@@ -478,18 +776,19 @@
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault();
+        if (hardDropAnim) break;
         G.moveLeft(state);
-        markDirty();
+        syncActiveLayer();
         break;
       case 'ArrowRight':
         e.preventDefault();
+        if (hardDropAnim) break;
         G.moveRight(state);
-        markDirty();
+        syncActiveLayer();
         break;
       case 'ArrowDown':
         e.preventDefault();
-        G.softDrop(state);
-        markDirty();
+        softDropBoost();
         break;
       case 'ArrowUp':
       case 'x':
@@ -497,13 +796,14 @@
       case 'w':
       case 'W':
         e.preventDefault();
+        if (hardDropAnim) break;
         G.rotate(state);
-        markDirty();
+        dropAccum = Math.min(dropAccum, state.dropIntervalMs * 0.85);
+        syncActiveLayer();
         break;
       case ' ':
         e.preventDefault();
-        G.hardDrop(state);
-        markDirty();
+        beginHardDrop();
         break;
       case 'Enter':
         e.preventDefault();
@@ -514,12 +814,39 @@
       case 'Backspace':
         e.preventDefault();
         G.clearSelection(state);
-        markDirty();
+        markDirty(true);
         break;
       default:
         break;
     }
   });
+
+  window.addEventListener('resize', function () {
+    cachedMetrics = null;
+    if (state.phase === 'playing') syncActiveLayer();
+  });
+
+  function processDropTicks() {
+    var structural = false;
+    while (
+      dropAccum >= state.dropIntervalMs &&
+      state.phase === 'playing' &&
+      state.active &&
+      !state.clearing &&
+      !state.settling &&
+      !hardDropAnim
+    ) {
+      dropAccum -= state.dropIntervalMs;
+      var before = state.active;
+      G.tickDrop(state);
+      if (!state.active || state.active !== before || state.clearing) {
+        structural = true;
+        dropAccum = 0;
+        break;
+      }
+    }
+    return structural;
+  }
 
   function frame(ts) {
     if (state.phase === 'playing') {
@@ -529,22 +856,28 @@
 
       var prevPhase = state.phase;
       G.tickTimer(state, dt);
-      dropAccum += dt;
-      var dropped = false;
-      while (dropAccum >= state.dropIntervalMs && state.phase === 'playing') {
-        dropAccum -= state.dropIntervalMs;
-        G.tickDrop(state);
-        dropped = true;
+
+      if (hardDropAnim) {
+        finishHardDropIfDue(ts);
+      } else if (!state.clearing && !state.settling) {
+        dropAccum += dt;
+        if (processDropTicks()) markDirty(true);
       }
 
-      if (state.phase !== prevPhase || dropped) markDirty();
-      else if (state.phase === 'playing' && lastRenderedPhase === 'playing') updateTimerHud();
+      if (state.phase !== prevPhase) markDirty(true);
+      else if (lastRenderedPhase === 'playing') updateTimerHud();
+
+      if (state.settling && !settleFxStarted) startSettleFx();
     } else {
       lastTs = 0;
       dropAccum = 0;
     }
 
     if (needsRender) render();
+    else if (state.phase === 'playing' && lastRenderedPhase === 'playing') {
+      syncActiveLayer();
+    }
+
     requestAnimationFrame(frame);
   }
 

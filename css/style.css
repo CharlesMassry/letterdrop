@@ -320,10 +320,7 @@ body {
 .board {
   --board-gap: clamp(2px, 0.4vw, 4px);
   --settle-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  grid-template-rows: repeat(12, 1fr);
-  gap: var(--board-gap);
+  position: relative;
   aspect-ratio: 8 / 12;
   /* Fit remaining viewport slot without forcing overflow below */
   width: min(100cqw, calc(100cqh * 8 / 12));
@@ -337,6 +334,69 @@ body {
   box-shadow:
     inset 0 0 40px rgba(0, 0, 0, 0.28),
     0 0 48px var(--glow);
+  overflow: hidden;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(12, 1fr);
+  gap: var(--board-gap);
+  width: 100%;
+  height: 100%;
+}
+
+.board-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.fx-tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border-radius: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: clamp(0.55rem, 7.5cqw, 1.15rem);
+  color: var(--ink);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.fx-tile .cell-letter {
+  line-height: 1;
+}
+
+.fx-tile .cell-val {
+  position: absolute;
+  left: 2px;
+  bottom: 1px;
+  font-size: clamp(0.4rem, 3.2cqw, 0.55rem);
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(6, 26, 22, 0.55);
+  pointer-events: none;
+}
+
+.fx-tile.fx-active {
+  z-index: 5;
+  background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
+  box-shadow: 0 0 16px rgba(125, 255, 179, 0.55);
+}
+
+.fx-tile.fx-settle {
+  z-index: 4;
+  background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.25),
+    0 6px 18px rgba(0, 0, 0, 0.2);
 }
 
 .cell {
@@ -452,28 +512,6 @@ body {
   }
 }
 
-/* —— Cascade settle: continuous eased glide into place —— */
-.cell.settling {
-  z-index: 4;
-  pointer-events: none;
-  cursor: default;
-  transition: none;
-  will-change: transform;
-  box-shadow:
-    0 2px 0 rgba(0, 0, 0, 0.25),
-    0 6px 18px rgba(0, 0, 0, 0.22),
-    0 0 14px rgba(125, 255, 179, 0.22);
-}
-
-@keyframes cascade-settle {
-  from {
-    transform: translateY(calc(var(--fall-cells) * -1 * (100% + var(--board-gap))));
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
 .cell.filled {
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
@@ -482,18 +520,6 @@ body {
 
 .cell.filled:hover {
   filter: brightness(1.08);
-}
-
-.cell.active {
-  background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
-  box-shadow: 0 0 16px rgba(125, 255, 179, 0.55);
-  animation: fall-glow 0.6s ease infinite alternate;
-  z-index: 2;
-}
-
-@keyframes fall-glow {
-  from { transform: scale(1); }
-  to { transform: scale(1.04); }
 }
 
 .cell.selected {

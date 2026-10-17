@@ -4,7 +4,6 @@
 
   var COLS = 8;
   var ROWS = 12;
-  var ROUND_MS = 120000;
   var INITIAL_DROP_MS = 900;
   var MIN_DROP_MS = 350;
   /** How long the disintegration animation runs before gravity. */
@@ -340,9 +339,30 @@
       }
     }
 
+    function candAnchor(cand) {
+      var bestR = Infinity;
+      var bestC = Infinity;
+      for (var i = 0; i < cand.cells.length; i++) {
+        var cell = cand.cells[i];
+        if (cell.row < bestR || (cell.row === bestR && cell.col < bestC)) {
+          bestR = cell.row;
+          bestC = cell.col;
+        }
+      }
+      return { row: bestR, col: bestC };
+    }
+
+    // Prefer higher points; ties → longer → topmost → leftmost → word text.
     candidates.sort(function (a, b) {
+      if (b.points !== a.points) return b.points - a.points;
       if (b.cells.length !== a.cells.length) return b.cells.length - a.cells.length;
-      return b.points - a.points;
+      var aa = candAnchor(a);
+      var bb = candAnchor(b);
+      if (aa.row !== bb.row) return aa.row - bb.row;
+      if (aa.col !== bb.col) return aa.col - bb.col;
+      if (a.word < b.word) return -1;
+      if (a.word > b.word) return 1;
+      return 0;
     });
 
     var used = {};
@@ -373,7 +393,6 @@
       score: 0,
       wordsFound: 0,
       foundWords: [],
-      timeLeftMs: ROUND_MS,
       dropIntervalMs: INITIAL_DROP_MS,
       feedback: null,
       feedbackKind: null,
@@ -527,7 +546,6 @@
     state.clearing = null;
     state.settling = null;
     state.spawnAfterClear = false;
-    state.timeLeftMs = ROUND_MS;
     state.dropIntervalMs = INITIAL_DROP_MS;
     state.feedback = 'Line up a dictionary word in a row or column to score.';
     state.feedbackKind = 'info';
@@ -566,23 +584,9 @@
     tryRotate(state.board, state.active);
   }
 
-  function tickTimer(state, dtMs) {
-    if (state.phase !== 'playing') return;
-    state.timeLeftMs = Math.max(0, state.timeLeftMs - dtMs);
-    if (state.timeLeftMs <= 0) endGame(state, 'time');
-  }
-
-  function formatTime(ms) {
-    var totalSec = Math.ceil(ms / 1000);
-    var m = Math.floor(totalSec / 60);
-    var s = totalSec % 60;
-    return m + ':' + (s < 10 ? '0' : '') + s;
-  }
-
   window.Letterdrop = {
     COLS: COLS,
     ROWS: ROWS,
-    ROUND_MS: ROUND_MS,
     LETTER_VALUES: LETTER_VALUES,
     letterValue: letterValue,
     scoreWord: scoreWord,
@@ -603,8 +607,6 @@
     moveRight: moveRight,
     softDrop: softDrop,
     rotate: rotate,
-    tickTimer: tickTimer,
-    formatTime: formatTime,
     claimLinedUpWords: claimLinedUpWords,
     finishClearing: finishClearing,
     finishSettling: finishSettling,

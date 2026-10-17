@@ -1,6 +1,6 @@
 # Letterdrop
 
-Falling letter tetrominoes meet word-building. Line up dictionary words on an 8×12 board before the two-minute timer ends. Scoring uses **Scrabble letter values** (shown on each tile); words you find this round appear in a live list.
+Falling letter tetrominoes meet word-building. Line up dictionary words on an 8×12 board — keep going until the stack reaches the top. Scoring uses **Scrabble letter values** (shown on each tile); words you find this round appear in a live list.
 
 ## Play (no install)
 
@@ -36,7 +36,7 @@ Then open http://127.0.0.1:3847/
 2. **↑** / **X** rotates; **Space** hard-drops.
 3. **Line up** letters in a row or column — dictionary words score automatically when a piece lands (and after cascades).
 4. Cleared letters disintegrate; remaining tiles **glide** down into place.
-5. When time runs out or the board fills, see your score and play again.
+5. When the board fills (no room to spawn), see your score and play again.
 
 ## Stack
 

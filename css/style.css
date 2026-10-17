@@ -257,7 +257,7 @@ body {
 
 .hud {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: clamp(0.3rem, 1vw, 0.5rem);
   width: 100%;
   flex: 0 0 auto;
@@ -289,20 +289,6 @@ body {
   color: var(--sand);
   margin-top: 0.1rem;
   line-height: 1.15;
-}
-
-.hud-stat.timer .value {
-  color: var(--foam);
-}
-
-.hud-stat.timer.urgent .value {
-  color: var(--coral);
-  animation: pulse 0.8s ease infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
 }
 
 .board-wrap {

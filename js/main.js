@@ -16,7 +16,6 @@
   var feedbackClearTimer = null;
   var needsRender = true;
   var lastRenderedPhase = state.phase;
-  var lastTimerText = '';
   var clearAnimTimer = null;
   var clearAnimToken = 0;
   var settleAnimTimer = null;
@@ -301,7 +300,7 @@
       '<h1 class="brand" aria-label="Letterdrop">' +
       brandSpans('Letterdrop') +
       '</h1>' +
-      '<p class="tagline">Falling letter blocks. Rising words. Two minutes to spell your way up the board.</p>' +
+      '<p class="tagline">Falling letter blocks. Rising words. Stack until the board fills — spell your way up.</p>' +
       '<ul class="howto">' +
       '<li><strong>← → ↓</strong> move · <strong>↑ / X</strong> rotate · <strong>Space</strong> hard drop</li>' +
       '<li><strong>Line up</strong> a dictionary word in a row or column — it scores when the piece lands</li>' +
@@ -315,21 +314,16 @@
   }
 
   function renderEnd() {
-    var reason =
-      state.endReason === 'full' ? 'Board full — no room to drop.' : "Time's up.";
     return (
       '<div class="atmosphere" aria-hidden="true"></div>' +
       '<main class="screen end-screen">' +
       '<p class="end-brand">Letterdrop</p>' +
-      '<h1>' +
-      (state.endReason === 'full' ? 'Stacked out' : 'Round over') +
-      '</h1>' +
+      '<h1>Stacked out</h1>' +
       '<p class="end-score">' +
       state.score +
       '</p>' +
       '<p class="end-meta">' +
-      reason +
-      ' · ' +
+      'Board full — no room to drop. · ' +
       state.wordsFound +
       ' word' +
       (state.wordsFound === 1 ? '' : 's') +
@@ -448,12 +442,9 @@
   }
 
   function renderPlay() {
-    var urgent = state.timeLeftMs <= 30000;
     var fbClass = 'feedback';
     if (state.feedbackKind === 'ok') fbClass += ' ok';
     if (state.feedbackKind === 'error') fbClass += ' error';
-
-    lastTimerText = G.formatTime(state.timeLeftMs);
 
     return (
       '<div class="atmosphere" aria-hidden="true"></div>' +
@@ -461,11 +452,6 @@
       '<div class="hud">' +
       '<div class="hud-stat"><span class="label">Score</span><span class="value" data-hud="score">' +
       state.score +
-      '</span></div>' +
-      '<div class="hud-stat timer' +
-      (urgent ? ' urgent' : '') +
-      '" data-hud="timer-wrap"><span class="label">Time</span><span class="value" data-hud="timer">' +
-      lastTimerText +
       '</span></div>' +
       '<div class="hud-stat"><span class="label">Words</span><span class="value" data-hud="words">' +
       state.wordsFound +
@@ -497,7 +483,6 @@
   }
 
   function patchHudChrome() {
-    updateTimerHud();
     var scoreEl = app.querySelector('[data-hud="score"]');
     if (scoreEl) scoreEl.textContent = String(state.score);
     var wordsEl = app.querySelector('[data-hud="words"]');
@@ -550,19 +535,6 @@
     }
     lastRenderedPhase = state.phase;
     needsRender = false;
-  }
-
-  function updateTimerHud() {
-    var text = G.formatTime(state.timeLeftMs);
-    if (text === lastTimerText) return;
-    lastTimerText = text;
-    var el = app.querySelector('[data-hud="timer"]');
-    var wrap = app.querySelector('[data-hud="timer-wrap"]');
-    if (el) el.textContent = text;
-    if (wrap) {
-      if (state.timeLeftMs <= 30000) wrap.classList.add('urgent');
-      else wrap.classList.remove('urgent');
-    }
   }
 
   function scheduleFeedbackClear() {
@@ -815,7 +787,6 @@
       lastTs = ts;
 
       var prevPhase = state.phase;
-      G.tickTimer(state, dt);
 
       if (hardDropAnim) {
         finishHardDropIfDue(ts);
@@ -825,7 +796,6 @@
       }
 
       if (state.phase !== prevPhase) markDirty(true);
-      else if (lastRenderedPhase === 'playing') updateTimerHud();
 
       if (state.settling && !settleFxStarted) startSettleFx();
     } else {

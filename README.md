@@ -2,40 +2,33 @@
 
 Falling letter tetrominoes meet word-building. Line up dictionary words on an 8×12 board before the two-minute timer ends.
 
-## Play (easiest — do this)
+## Play (no install)
 
-```bash
-npm install
-npm start
+1. Open this folder.
+2. Double-click **`index.html`** (or right-click → Open with your browser).
+
+That’s it — plain HTML + CSS + JavaScript. No npm, no Vite, no build step.
+
+Files that must stay together:
+
+```
+index.html
+favicon.svg
+css/style.css
+js/words.js
+js/game.js
+js/main.js
 ```
 
-Then open **http://127.0.0.1:3847** in your browser.
+### If the page is blank
 
-`npm start` = build a static site into `dist/` + serve it. Leave the terminal open while you play. Ctrl+C stops the server.
-
-Already built once?
+Very old browsers sometimes block local scripts; if so, run any tiny static server from this folder, then visit the printed URL:
 
 ```bash
-npm run play
+python3 -m http.server 3847
 ```
 
-### If the page “hangs” or never loads (Windows / WSL)
-
-That almost always means **no game server is running**, or the browser opened a bad URL:
-
-| What you did | What happens |
-| --- | --- |
-| Opened `http://127.0.0.1:3847` with no terminal server | Browser spins / pending forever |
-| Double-clicked `index.html` (`file://…`) | ES modules fail — blank or hung page |
-| Used Vite `npm run dev` then closed the terminal | Dev server died; refresh hangs |
-
-**Fix:** in the project folder run `npm start`, wait until you see `Letterdrop (static build)`, then visit **http://127.0.0.1:3847** (not `file://`).
-
-WSL tip: run the commands inside your WSL distro, then open that URL in Windows Chrome/Edge.
-
-### Public hosted URL
-
-This repo is **private on Origin** with no GitHub Pages / public static host hooked up, so there is **no shareable https play link** from this environment. Anyone who can clone can run `npm start` locally. If you later enable GitHub Pages (or any static host), publish the contents of `dist/` — it is plain HTML/CSS/JS with relative asset paths.
+Then open http://127.0.0.1:3847/
 
 ## How to play
 
@@ -45,14 +38,6 @@ This repo is **private on Origin** with no GitHub Pages / public static host hoo
 4. Or **tap** adjacent landed letters — a valid word auto-scores (**Submit** / **Enter** also work).
 5. When time runs out or the board fills, see your score and play again.
 
-## Dev (optional)
-
-```bash
-npm run dev       # Vite HMR on port 3847
-npm run build     # writes static files to dist/
-npm run preview   # Vite’s static preview of dist/
-```
-
 ## Stack
 
-Vanilla TypeScript + Vite. `dist/` after build is fully static (no backend, no auth, no database). Dictionary (~7k common English words) is bundled into the JS.
+Static HTML/CSS/JS only. The dictionary (~7k common English words) lives in `js/words.js` as a global.

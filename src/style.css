@@ -414,6 +414,14 @@ body {
   font-weight: 500;
 }
 
+.word-preview.valid {
+  color: var(--ink);
+  background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
+  border-color: rgba(125, 255, 179, 0.55);
+  letter-spacing: 0.14em;
+  animation: score-pop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .feedback {
   min-height: clamp(1rem, 2.8vh, 1.35rem);
   text-align: center;

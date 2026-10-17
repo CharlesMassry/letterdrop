@@ -49,8 +49,8 @@ function renderTitle(): string {
       <p class="tagline">Falling letter blocks. Rising words. Two minutes to spell your way up the board.</p>
       <ul class="howto">
         <li><strong>← → ↓</strong> move · <strong>↑ / X</strong> rotate · <strong>Space</strong> hard drop</li>
-        <li><strong>Click / tap</strong> adjacent landed letters to spell</li>
-        <li><strong>Enter</strong> submit · <strong>Esc</strong> clear selection</li>
+        <li><strong>Line up</strong> a word in a row or column — it scores when the piece lands</li>
+        <li>Or <strong>tap</strong> adjacent letters (auto-scores when the word is valid)</li>
         <li>Seven tetromino shapes — each cell carries a letter</li>
       </ul>
       <div class="title-actions">
@@ -114,6 +114,18 @@ function renderPlay(): string {
   ]
     .filter(Boolean)
     .join(' ');
+  const previewClass = [
+    'word-preview',
+    word ? '' : 'empty',
+    state.selectionValid ? 'valid' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const previewText = !word
+    ? 'Line up a word, or tap adjacent letters…'
+    : state.selectionValid
+      ? `${word} ✓`
+      : word;
 
   lastTimerText = formatTime(state.timeLeftMs);
 
@@ -136,8 +148,8 @@ function renderPlay(): string {
       </div>
       <div class="board-wrap">${renderBoard()}</div>
       <div class="word-bar">
-        <div class="word-preview${word ? '' : ' empty'}" aria-live="polite" data-hud="word">
-          ${word || 'Select adjacent letters…'}
+        <div class="${previewClass}" aria-live="polite" data-hud="word">
+          ${previewText}
         </div>
         <div class="${fbClass}" aria-live="assertive" data-hud="feedback">${state.feedback ?? ''}</div>
         <div class="actions">
@@ -153,7 +165,7 @@ function renderPlay(): string {
         <button type="button" class="btn" data-action="down">↓</button>
         <button type="button" class="btn" data-action="right">→</button>
       </div>
-      <p class="hint-keys">Arrows move · ↑ rotate · Space drop · Enter submit · Esc clear</p>
+      <p class="hint-keys">Arrows move · ↑ rotate · Space drop · line up words to score · Esc clear</p>
     </main>
   `;
 }

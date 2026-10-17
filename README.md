@@ -8,8 +8,8 @@ Longer words and rarer letters score more (Scrabble-style values). Scoring a wor
 
 1. **Move** the falling piece with `←` `→` `↓` (or on-screen controls on touch).
 2. **↑** (or **X**) rotates; **Space** hard-drops.
-3. **Click / tap** adjacent landed letters (up/down/left/right) to spell a word of 3+ letters.
-4. **Enter** (or **Submit**) scores a valid dictionary word and clears those tiles; **Esc** clears your selection.
+3. **Line up** letters in a contiguous row or column — dictionary words score automatically when a piece lands (and clear with gravity).
+4. Or **tap** adjacent landed letters in order — a valid word auto-scores (you can also press **Submit** / **Enter**). **Esc** clears a partial selection.
 5. Survive the stack and the clock — when time runs out (or the board fills), see your score and play again.
 
 ## Run locally

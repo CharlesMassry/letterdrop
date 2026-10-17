@@ -51,12 +51,13 @@
     return LETTER_VALUES[letter.toUpperCase()] || 1;
   }
 
+  /** Scrabble letter-sum score (primary). Tiny +1 per letter past 4 keeps longer words fair. */
   function scoreWord(word) {
     var upper = word.toUpperCase();
     var base = 0;
     for (var i = 0; i < upper.length; i++) base += letterValue(upper.charAt(i));
-    var lengthBonus = Math.max(0, upper.length - 2);
-    return base * (1 + lengthBonus);
+    var lengthNudge = Math.max(0, upper.length - 4);
+    return base + lengthNudge;
   }
 
   function isDictionaryWord(word) {
@@ -320,6 +321,7 @@
       selection: [],
       score: 0,
       wordsFound: 0,
+      foundWords: [],
       timeLeftMs: ROUND_MS,
       dropIntervalMs: INITIAL_DROP_MS,
       feedback: null,
@@ -357,11 +359,14 @@
     var points = scoreWord(word);
     var cleared = removeCellsAndApplyGravity(state.board, cells);
     if (cleared.length === 0) return false;
+    var upper = word.toUpperCase();
     state.selection = [];
     state.selectionValid = false;
     state.score += points;
     state.wordsFound += 1;
-    state.feedback = '+' + points + ' · ' + word.toUpperCase();
+    if (!state.foundWords) state.foundWords = [];
+    state.foundWords.push({ word: upper, points: points });
+    state.feedback = '+' + points + ' · ' + upper;
     state.feedbackKind = 'ok';
     state.dropIntervalMs = Math.max(MIN_DROP_MS, INITIAL_DROP_MS - state.wordsFound * 25);
     resolveActiveOverlap(state);
@@ -412,6 +417,7 @@
     state.selectionValid = false;
     state.score = 0;
     state.wordsFound = 0;
+    state.foundWords = [];
     state.timeLeftMs = ROUND_MS;
     state.dropIntervalMs = INITIAL_DROP_MS;
     state.feedback =
@@ -579,6 +585,9 @@
     COLS: COLS,
     ROWS: ROWS,
     ROUND_MS: ROUND_MS,
+    LETTER_VALUES: LETTER_VALUES,
+    letterValue: letterValue,
+    scoreWord: scoreWord,
     createInitialState: createInitialState,
     startGame: startGame,
     endGame: endGame,

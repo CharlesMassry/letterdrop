@@ -346,6 +346,26 @@ body {
   transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
 
+.cell-letter {
+  line-height: 1;
+}
+
+.cell-val {
+  position: absolute;
+  left: 2px;
+  bottom: 1px;
+  font-size: clamp(0.4rem, 3.2cqw, 0.55rem);
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(6, 26, 22, 0.55);
+  pointer-events: none;
+}
+
+.cell.active .cell-val,
+.cell.selected .cell-val {
+  color: rgba(6, 26, 22, 0.65);
+}
+
 .cell.filled {
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
@@ -420,6 +440,84 @@ body {
   border-color: rgba(125, 255, 179, 0.55);
   letter-spacing: 0.14em;
   animation: score-pop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.found-words {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+  max-height: clamp(2.4rem, 7vh, 3.6rem);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  flex: 0 0 auto;
+}
+
+.found-words .found-label {
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(200, 235, 224, 0.5);
+  padding-top: 0.2rem;
+}
+
+.found-words .found-empty {
+  font-size: 0.72rem;
+  color: rgba(200, 235, 224, 0.35);
+  padding-top: 0.15rem;
+}
+
+.found-words ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  overflow-y: auto;
+  max-height: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.found-words li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  background: rgba(8, 36, 30, 0.65);
+  border: 1px solid rgba(125, 255, 179, 0.14);
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem 0.15rem 0.5rem;
+  font-size: clamp(0.65rem, 2vw, 0.75rem);
+  animation: score-pop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.found-words .fw-word {
+  color: var(--sand);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.found-words .fw-pts {
+  color: var(--foam);
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.found-words.end-found {
+  max-height: none;
+  justify-content: center;
+  margin: 0 0 1.25rem;
+}
+
+.found-words.end-found .found-label {
+  display: none;
+}
+
+.found-words.end-found ul {
+  justify-content: center;
+  max-height: 8rem;
 }
 
 .feedback {

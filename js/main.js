@@ -74,6 +74,21 @@
       ' word' +
       (state.wordsFound === 1 ? '' : 's') +
       '</p>' +
+      (state.foundWords && state.foundWords.length
+        ? '<ul class="found-words end-found" aria-label="Words found this round">' +
+          state.foundWords
+            .map(function (w) {
+              return (
+                '<li><span class="fw-word">' +
+                w.word +
+                '</span><span class="fw-pts">' +
+                w.points +
+                '</span></li>'
+              );
+            })
+            .join('') +
+          '</ul>'
+        : '') +
       '<div class="end-actions">' +
       '<button type="button" class="btn" data-action="start">Play again</button>' +
       '<button type="button" class="btn btn-ghost" data-action="title">Title</button>' +
@@ -104,6 +119,10 @@
         if (selIdx >= 0) classes.push('selected');
         var order =
           selIdx >= 0 ? '<span class="sel-order">' + (selIdx + 1) + '</span>' : '';
+        var val =
+          letter
+            ? '<span class="cell-val">' + G.letterValue(letter) + '</span>'
+            : '';
         cells.push(
           '<button type="button" class="' +
             classes.join(' ') +
@@ -112,15 +131,45 @@
             '" data-col="' +
             c +
             '" aria-label="' +
-            (letter ? 'Letter ' + letter : 'Empty') +
+            (letter ? 'Letter ' + letter + ', ' + G.letterValue(letter) + ' points' : 'Empty') +
             '">' +
-            letter +
+            (letter ? '<span class="cell-letter">' + letter + '</span>' : '') +
+            val +
             order +
             '</button>',
         );
       }
     }
     return '<div class="board" role="grid" aria-label="Letter board">' + cells.join('') + '</div>';
+  }
+
+  function renderFoundWords() {
+    var list = state.foundWords || [];
+    if (!list.length) {
+      return (
+        '<div class="found-words empty" data-hud="found" aria-live="polite">' +
+        '<span class="found-label">Words</span>' +
+        '<span class="found-empty">None yet</span>' +
+        '</div>'
+      );
+    }
+    var items = '';
+    for (var i = 0; i < list.length; i++) {
+      items +=
+        '<li><span class="fw-word">' +
+        list[i].word +
+        '</span><span class="fw-pts">' +
+        list[i].points +
+        '</span></li>';
+    }
+    return (
+      '<div class="found-words" data-hud="found" aria-live="polite">' +
+      '<span class="found-label">Words</span>' +
+      '<ul>' +
+      items +
+      '</ul>' +
+      '</div>'
+    );
   }
 
   function renderPlay() {
@@ -170,6 +219,7 @@
       '" aria-live="assertive" data-hud="feedback">' +
       (state.feedback || '') +
       '</div>' +
+      renderFoundWords() +
       '<div class="actions">' +
       '<button type="button" class="btn btn-ghost" data-action="clear">Clear</button>' +
       '<button type="button" class="btn btn-coral" data-action="submit">Submit</button>' +

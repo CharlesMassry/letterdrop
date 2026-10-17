@@ -1,6 +1,6 @@
 # Letterdrop
 
-Falling letter tetrominoes meet word-building. Line up dictionary words on an 8×12 board before the two-minute timer ends.
+Falling letter tetrominoes meet word-building. Line up dictionary words on an 8×12 board before the two-minute timer ends. Scoring uses **Scrabble letter values** (shown on each tile); words you find this round appear in a live list.
 
 ## Play (no install)
 

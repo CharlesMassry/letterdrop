@@ -21,6 +21,8 @@
   var lastSubmitSig = '';
   var clearAnimTimer = null;
   var clearAnimToken = 0;
+  var settleAnimTimer = null;
+  var settleAnimToken = 0;
 
   function brandSpans(text) {
     var out = '';
@@ -29,6 +31,19 @@
       out += '<span>' + (ch === ' ' ? '&nbsp;' : ch) + '</span>';
     }
     return out;
+  }
+
+  function cancelAnimTimers() {
+    clearAnimToken += 1;
+    settleAnimToken += 1;
+    if (clearAnimTimer !== null) {
+      window.clearTimeout(clearAnimTimer);
+      clearAnimTimer = null;
+    }
+    if (settleAnimTimer !== null) {
+      window.clearTimeout(settleAnimTimer);
+      settleAnimTimer = null;
+    }
   }
 
   function scheduleClearAnimation() {
@@ -40,14 +55,28 @@
       if (!state.clearing) return;
       G.finishClearing(state);
       scheduleFeedbackClear();
-      // If another word started clearing (cascade), schedule its animation too.
+      // Settling and/or another clear (cascade) pick up via markDirty.
       markDirty();
     }, G.CLEAR_ANIM_MS);
+  }
+
+  function scheduleSettleAnimation() {
+    if (!state.settling || settleAnimTimer !== null) return;
+    var token = ++settleAnimToken;
+    var ms = state.settling.durationMs || 280;
+    settleAnimTimer = window.setTimeout(function () {
+      if (token !== settleAnimToken) return;
+      settleAnimTimer = null;
+      if (!state.settling) return;
+      G.finishSettling(state);
+      markDirty();
+    }, ms);
   }
 
   function markDirty() {
     needsRender = true;
     if (state.clearing) scheduleClearAnimation();
+    if (state.settling) scheduleSettleAnimation();
   }
 
   function renderTitle() {
@@ -125,20 +154,26 @@
   function renderBoard() {
     var activeMap = G.activeCellMap(state.active);
     var clearing = G.clearingKeySet(state);
+    var settleMap = G.settlingMoveMap(state);
+    var settleMs = state.settling ? state.settling.durationMs : 0;
     var cells = [];
     for (var r = 0; r < G.ROWS; r++) {
       for (var c = 0; c < G.COLS; c++) {
         var key = r + ',' + c;
         var clearingLetter = clearing[key];
-        var activeLetter = clearingLetter ? null : activeMap[key];
+        var settleMove = clearingLetter ? null : settleMap[key];
+        var activeLetter = clearingLetter || settleMove ? null : activeMap[key];
         var boarded = clearingLetter || state.board[r][c];
         var letter = activeLetter || boarded || '';
         var classes = ['cell'];
         if (clearingLetter) classes.push('filled', 'disintegrating');
         else if (activeLetter) classes.push('active');
-        else if (boarded) classes.push('filled');
+        else if (boarded) {
+          classes.push('filled');
+          if (settleMove) classes.push('settling');
+        }
         var selIdx = -1;
-        if (!clearingLetter) {
+        if (!clearingLetter && !settleMove) {
           for (var i = 0; i < state.selection.length; i++) {
             if (state.selection[i].row === r && state.selection[i].col === c) {
               selIdx = i;
@@ -153,6 +188,22 @@
           letter
             ? '<span class="cell-val">' + G.letterValue(letter) + '</span>'
             : '';
+        var styleAttr = '';
+        if (settleMove) {
+          var fall = settleMove.toRow - settleMove.fromRow;
+          if (fall < 1) fall = 1;
+          var halfSteps = fall * 2;
+          styleAttr =
+            ' style="--fall-cells:' +
+            fall +
+            ';--settle-ms:' +
+            settleMs +
+            'ms;animation:cascade-settle ' +
+            settleMs +
+            'ms steps(' +
+            halfSteps +
+            ',end) both"';
+        }
         cells.push(
           '<button type="button" class="' +
             classes.join(' ') +
@@ -161,7 +212,8 @@
             '" data-col="' +
             c +
             '"' +
-            (clearingLetter ? ' disabled' : '') +
+            styleAttr +
+            (clearingLetter || settleMove ? ' disabled' : '') +
             ' aria-label="' +
             (letter ? 'Letter ' + letter + ', ' + G.letterValue(letter) + ' points' : 'Empty') +
             '">' +
@@ -324,6 +376,7 @@
   }
 
   function onStart() {
+    cancelAnimTimers();
     G.startGame(state);
     lastTs = performance.now();
     dropAccum = 0;
@@ -331,6 +384,7 @@
   }
 
   function resetTitle() {
+    cancelAnimTimers();
     var fresh = G.createInitialState();
     for (var k in fresh) {
       if (Object.prototype.hasOwnProperty.call(fresh, k)) state[k] = fresh[k];
@@ -350,6 +404,14 @@
     },
     submit: function () {
       return handleSubmit();
+    },
+    finishClearing: function () {
+      G.finishClearing(state);
+      markDirty();
+    },
+    finishSettling: function () {
+      G.finishSettling(state);
+      markDirty();
     },
   };
 

@@ -9,6 +9,10 @@
   var MIN_DROP_MS = 350;
   /** How long the disintegration animation runs before gravity. */
   var CLEAR_ANIM_MS = 520;
+  /** Base ms per full cell of cascade fall (half-steps split this). */
+  var SETTLE_MS_PER_CELL = 120;
+  var SETTLE_MS_MIN = 280;
+  var SETTLE_MS_MAX = 720;
 
   var LETTER_VALUES = {
     A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8, K: 5, L: 1, M: 3,
@@ -204,8 +208,14 @@
     return null;
   }
 
+  /**
+   * Remove cells and apply column gravity.
+   * Returns { removed, moves } where moves describe each letter that fell
+   * (for half-cell cascade animation). Logical positions stay on the integer grid.
+   */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];
+    var moves = [];
     var toRemove = {};
     var i, r, c, key;
     for (i = 0; i < cells.length; i++) {
@@ -220,14 +230,34 @@
       var stack = [];
       for (r = ROWS - 1; r >= 0; r--) {
         if (toRemove[r + ',' + c]) continue;
-        if (board[r][c]) stack.push(board[r][c]);
+        if (board[r][c]) stack.push({ letter: board[r][c], fromRow: r });
       }
-      for (r = ROWS - 1; r >= 0; r--) {
-        var fromBottom = ROWS - 1 - r;
-        board[r][c] = stack[fromBottom] || null;
+      for (r = 0; r < ROWS; r++) board[r][c] = null;
+      for (i = 0; i < stack.length; i++) {
+        var toRow = ROWS - 1 - i;
+        board[toRow][c] = stack[i].letter;
+        if (stack[i].fromRow !== toRow) {
+          moves.push({
+            letter: stack[i].letter,
+            col: c,
+            fromRow: stack[i].fromRow,
+            toRow: toRow,
+          });
+        }
       }
     }
-    return removed;
+    return { removed: removed, moves: moves };
+  }
+
+  function settleDurationMs(moves) {
+    var maxFall = 0;
+    for (var i = 0; i < moves.length; i++) {
+      var fall = moves[i].toRow - moves[i].fromRow;
+      if (fall > maxFall) maxFall = fall;
+    }
+    var ms = SETTLE_MS_MIN + maxFall * SETTLE_MS_PER_CELL;
+    if (ms > SETTLE_MS_MAX) ms = SETTLE_MS_MAX;
+    return ms;
   }
 
   function areAdjacent(a, b) {
@@ -332,6 +362,7 @@
       endReason: null,
       /** @type {null|{cells:Array<{row:number,col:number,letter:string}>}} */
       clearing: null,
+      settling: null,
       spawnAfterClear: false,
     };
   }
@@ -344,6 +375,16 @@
       set[c.row + ',' + c.col] = c.letter;
     }
     return set;
+  }
+
+  function settlingMoveMap(state) {
+    var map = {};
+    if (!state.settling) return map;
+    for (var i = 0; i < state.settling.moves.length; i++) {
+      var m = state.settling.moves[i];
+      map[m.toRow + ',' + m.col] = m;
+    }
+    return map;
   }
 
   function selectionWord(state) {
@@ -374,7 +415,7 @@
    * Score the word and start disintegration — board cells stay until finishClearing().
    */
   function applyScoreClear(state, word, cells) {
-    if (state.clearing) return false;
+    if (state.clearing || state.settling) return false;
     var snapshot = [];
     var i;
     for (i = 0; i < cells.length; i++) {
@@ -400,23 +441,42 @@
     return true;
   }
 
-  /** After the disintegration animation: remove tiles, gravity, then claim more words. */
+  /** After disintegration: apply gravity and optionally play half-step cascade settle. */
   function finishClearing(state) {
     if (!state.clearing) return false;
-    removeCellsAndApplyGravity(state.board, state.clearing.cells);
+    var result = removeCellsAndApplyGravity(state.board, state.clearing.cells);
     state.clearing = null;
+    if (result.moves && result.moves.length) {
+      state.settling = {
+        moves: result.moves,
+        durationMs: settleDurationMs(result.moves),
+      };
+      return true;
+    }
+    afterBoardSettled(state);
+    return true;
+  }
+
+  /** After cascade animation (or if nothing fell): resolve piece, claim words, spawn. */
+  function finishSettling(state) {
+    if (!state.settling) return false;
+    state.settling = null;
+    afterBoardSettled(state);
+    return true;
+  }
+
+  function afterBoardSettled(state) {
     resolveActiveOverlap(state);
     claimLinedUpWords(state);
-    if (!state.clearing && state.spawnAfterClear) {
+    if (!state.clearing && !state.settling && state.spawnAfterClear) {
       state.spawnAfterClear = false;
       spawnNext(state);
     }
-    return true;
   }
 
   function claimLinedUpWords(state) {
     if (state.phase !== 'playing') return 0;
-    if (state.clearing) return 0;
+    if (state.clearing || state.settling) return 0;
     var words = findLinedUpWords(state.board);
     if (!words.length) return 0;
     return applyScoreClear(state, words[0].word, words[0].cells) ? 1 : 0;
@@ -428,6 +488,7 @@
     state.selection = [];
     state.selectionValid = false;
     state.clearing = null;
+    state.settling = null;
     state.spawnAfterClear = false;
     state.endReason = reason;
     state.feedback = null;
@@ -466,6 +527,7 @@
     state.wordsFound = 0;
     state.foundWords = [];
     state.clearing = null;
+    state.settling = null;
     state.spawnAfterClear = false;
     state.timeLeftMs = ROUND_MS;
     state.dropIntervalMs = INITIAL_DROP_MS;
@@ -477,33 +539,33 @@
   }
 
   function tickDrop(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     if (!tryMoveDown(state.board, state.active)) lockAndSpawn(state);
   }
 
   function hardDrop(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     while (tryMoveDown(state.board, state.active)) { /* fall */ }
     lockAndSpawn(state);
   }
 
   function moveLeft(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     tryMoveHorizontal(state.board, state.active, -1);
   }
 
   function moveRight(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     tryMoveHorizontal(state.board, state.active, 1);
   }
 
   function softDrop(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     if (!tryMoveDown(state.board, state.active)) lockAndSpawn(state);
   }
 
   function rotate(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     tryRotate(state.board, state.active);
   }
 
@@ -529,7 +591,7 @@
   }
 
   function toggleSelect(state, row, col) {
-    if (state.phase !== 'playing' || state.clearing) return;
+    if (state.phase !== 'playing' || state.clearing || state.settling) return;
     if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
     if (!state.board[row][col]) return;
 
@@ -578,7 +640,7 @@
   }
 
   function submitWord(state) {
-    if (state.phase !== 'playing' || state.clearing) return false;
+    if (state.phase !== 'playing' || state.clearing || state.settling) return false;
     var word = selectionWord(state).toLowerCase();
 
     if (state.selection.length === 0) {
@@ -650,7 +712,9 @@
     formatTime: formatTime,
     claimLinedUpWords: claimLinedUpWords,
     finishClearing: finishClearing,
+    finishSettling: finishSettling,
     clearingKeySet: clearingKeySet,
+    settlingMoveMap: settlingMoveMap,
     CLEAR_ANIM_MS: CLEAR_ANIM_MS,
     findLinedUpWords: findLinedUpWords,
     isDictionaryWord: isDictionaryWord,

@@ -312,10 +312,11 @@ body {
 }
 
 .board {
+  --board-gap: clamp(2px, 0.35vw, 3px);
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(12, 1fr);
-  gap: clamp(2px, 0.35vw, 3px);
+  gap: var(--board-gap);
   aspect-ratio: 8 / 12;
   /* Fit remaining viewport slot without forcing overflow below */
   width: min(100cqw, calc(100cqh * 8 / 12));
@@ -435,6 +436,27 @@ body {
   100% {
     opacity: 0;
     transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.35);
+  }
+}
+
+/* —— Cascade settle: half-cell steps (steps = fallCells * 2) —— */
+.cell.settling {
+  z-index: 4;
+  pointer-events: none;
+  cursor: default;
+  transition: none;
+  will-change: transform;
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.25),
+    0 0 14px rgba(125, 255, 179, 0.28);
+}
+
+@keyframes cascade-settle {
+  from {
+    transform: translateY(calc(var(--fall-cells) * -1 * (100% + var(--board-gap))));
+  }
+  to {
+    transform: translateY(0);
   }
 }
 

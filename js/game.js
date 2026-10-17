@@ -187,7 +187,7 @@
   }
 
   function tryRotate(board, piece) {
-    if (piece.shape === 'O') return true;
+    // O is square but letters must still cycle on rotate (↑ / X).
     var rotatedRaw = rotateOffsetsClockwise(piece.cells);
     var rotated = normalizeCells(rotatedRaw);
     var kicks = [[0, 0], [0, -1], [0, 1], [0, -2], [0, 2], [-1, 0], [-1, -1], [-1, 1]];

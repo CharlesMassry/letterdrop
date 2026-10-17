@@ -17,8 +17,6 @@
   var needsRender = true;
   var lastRenderedPhase = state.phase;
   var lastTimerText = '';
-  var lastSubmitAt = 0;
-  var lastSubmitSig = '';
   var clearAnimTimer = null;
   var clearAnimToken = 0;
   var settleAnimTimer = null;
@@ -306,8 +304,7 @@
       '<p class="tagline">Falling letter blocks. Rising words. Two minutes to spell your way up the board.</p>' +
       '<ul class="howto">' +
       '<li><strong>← → ↓</strong> move · <strong>↑ / X</strong> rotate · <strong>Space</strong> hard drop</li>' +
-      '<li><strong>Line up</strong> a word in a row or column — it scores when the piece lands</li>' +
-      '<li>Or <strong>tap</strong> adjacent letters (auto-scores when the word is valid)</li>' +
+      '<li><strong>Line up</strong> a dictionary word in a row or column — it scores when the piece lands</li>' +
       '<li>Seven tetromino shapes — each cell carries a letter</li>' +
       '</ul>' +
       '<div class="title-actions">' +
@@ -393,39 +390,20 @@
         var classes = ['cell'];
         if (clearingLetter) classes.push('filled', 'disintegrating');
         else if (boarded) classes.push('filled');
-        var selIdx = -1;
-        if (!clearingLetter && !hideSettling[key]) {
-          for (var i = 0; i < state.selection.length; i++) {
-            if (state.selection[i].row === r && state.selection[i].col === c) {
-              selIdx = i;
-              break;
-            }
-          }
-        }
-        if (selIdx >= 0) classes.push('selected');
-        var order =
-          selIdx >= 0 ? '<span class="sel-order">' + (selIdx + 1) + '</span>' : '';
         var val =
           letter
             ? '<span class="cell-val">' + G.letterValue(letter) + '</span>'
             : '';
         cells.push(
-          '<button type="button" class="' +
+          '<div class="' +
             classes.join(' ') +
-            '" data-row="' +
-            r +
-            '" data-col="' +
-            c +
-            '"' +
-            (clearingLetter || hideSettling[key] ? ' disabled' : '') +
-            ' aria-label="' +
+            '" role="gridcell" aria-label="' +
             (letter ? 'Letter ' + letter + ', ' + G.letterValue(letter) + ' points' : 'Empty') +
             '">' +
             (letter ? '<span class="cell-letter">' + letter + '</span>' : '') +
             val +
-            order +
             (clearingLetter ? shardMarkup() : '') +
-            '</button>',
+            '</div>',
         );
       }
     }
@@ -470,19 +448,10 @@
   }
 
   function renderPlay() {
-    var word = G.selectionWord(state);
     var urgent = state.timeLeftMs <= 30000;
     var fbClass = 'feedback';
     if (state.feedbackKind === 'ok') fbClass += ' ok';
     if (state.feedbackKind === 'error') fbClass += ' error';
-    var previewClass = 'word-preview';
-    if (!word) previewClass += ' empty';
-    if (state.selectionValid) previewClass += ' valid';
-    var previewText = !word
-      ? 'Line up a word — or tap letters…'
-      : state.selectionValid
-        ? word + ' ✓'
-        : word;
 
     lastTimerText = G.formatTime(state.timeLeftMs);
 
@@ -506,11 +475,7 @@
       renderBoard() +
       '</div>' +
       '<div class="word-bar">' +
-      '<div class="' +
-      previewClass +
-      '" aria-live="polite" data-hud="word">' +
-      previewText +
-      '</div>' +
+      '<p class="play-hint" data-hud="hint">Line up a word in a row or column to score</p>' +
       '<div class="' +
       fbClass +
       '" aria-live="assertive" data-hud="feedback">' +
@@ -526,7 +491,7 @@
       '<button type="button" class="btn" data-action="down">↓</button>' +
       '<button type="button" class="btn" data-action="right">→</button>' +
       '</div>' +
-      '<p class="hint-keys">Arrows move · ↑ rotate · Space drop · line up or tap words to score · Esc clears selection</p>' +
+      '<p class="hint-keys">Arrows move · ↑ rotate · Space drop · line up words to score</p>' +
       '</main>'
     );
   }
@@ -543,18 +508,6 @@
       fb.className = 'feedback';
       if (state.feedbackKind === 'ok') fb.className += ' ok';
       if (state.feedbackKind === 'error') fb.className += ' error';
-    }
-    var wordEl = app.querySelector('[data-hud="word"]');
-    if (wordEl) {
-      var word = G.selectionWord(state);
-      wordEl.className = 'word-preview';
-      if (!word) wordEl.className += ' empty';
-      if (state.selectionValid) wordEl.className += ' valid';
-      wordEl.textContent = !word
-        ? 'Line up a word — or tap letters…'
-        : state.selectionValid
-          ? word + ' ✓'
-          : word;
     }
     var foundHost = app.querySelector('[data-hud="found"]');
     if (foundHost) {
@@ -627,25 +580,6 @@
     }
   }
 
-  function handleSubmit() {
-    var now = performance.now();
-    var sig =
-      G.selectionWord(state) +
-      ':' +
-      state.selection
-        .map(function (s) {
-          return s.row + ',' + s.col;
-        })
-        .join(';');
-    if (now - lastSubmitAt < 280 && sig === lastSubmitSig) return false;
-    lastSubmitAt = now;
-    lastSubmitSig = sig;
-    var ok = G.submitWord(state);
-    scheduleFeedbackClear();
-    markDirty(true);
-    return ok;
-  }
-
   function beginHardDrop() {
     if (
       state.phase !== 'playing' ||
@@ -707,12 +641,13 @@
       G.plant(state, cells);
       markDirty(true);
     },
-    select: function (row, col) {
-      G.toggleSelect(state, row, col);
-      markDirty(true);
-    },
-    submit: function () {
-      return handleSubmit();
+    claim: function () {
+      var n = G.claimLinedUpWords(state);
+      if (n) {
+        scheduleFeedbackClear();
+        markDirty(true);
+      }
+      return n;
     },
     finishClearing: function () {
       G.finishClearing(state);
@@ -747,9 +682,7 @@
   });
 
   app.addEventListener('click', function (e) {
-    var target = e.target.closest
-      ? e.target.closest('[data-action], [data-row]')
-      : null;
+    var target = e.target.closest ? e.target.closest('[data-action]') : null;
     if (!target) return;
 
     var action = target.getAttribute('data-action');
@@ -787,16 +720,6 @@
       dropAccum = Math.min(dropAccum, fallInterval() * 0.85);
       syncActiveLayer();
       return;
-    }
-
-    if (target.getAttribute('data-row') !== null) {
-      G.toggleSelect(
-        state,
-        Number(target.getAttribute('data-row')),
-        Number(target.getAttribute('data-col')),
-      );
-      scheduleFeedbackClear();
-      markDirty(true);
     }
   });
 
@@ -844,17 +767,6 @@
       case ' ':
         e.preventDefault();
         beginHardDrop();
-        break;
-      case 'Enter':
-        e.preventDefault();
-        handleSubmit();
-        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-        break;
-      case 'Escape':
-      case 'Backspace':
-        e.preventDefault();
-        G.clearSelection(state);
-        markDirty(true);
         break;
       default:
         break;

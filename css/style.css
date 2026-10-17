@@ -400,8 +400,6 @@ body {
 }
 
 .cell {
-  appearance: none;
-  -webkit-appearance: none;
   position: relative;
   margin: 0;
   padding: 0;
@@ -416,8 +414,7 @@ body {
   font-size: clamp(0.55rem, 7.5cqw, 1.15rem);
   color: var(--ink);
   user-select: none;
-  cursor: default;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, filter 0.12s ease;
+  pointer-events: none;
 }
 
 .cell-letter {
@@ -435,8 +432,7 @@ body {
   pointer-events: none;
 }
 
-.cell.active .cell-val,
-.cell.selected .cell-val {
+.fx-tile.fx-active .cell-val {
   color: rgba(6, 26, 22, 0.65);
 }
 
@@ -454,8 +450,7 @@ body {
   animation: letter-blast 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.cell.disintegrating .cell-val,
-.cell.disintegrating .sel-order {
+.cell.disintegrating .cell-val {
   animation: fade-shard 0.28s ease-out forwards;
 }
 
@@ -515,26 +510,6 @@ body {
 .cell.filled {
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-}
-
-.cell.filled:hover {
-  filter: brightness(1.08);
-}
-
-.cell.selected {
-  background: linear-gradient(145deg, #ff9e78 0%, #ff8a5c 100%);
-  transform: scale(1.06);
-  box-shadow: 0 0 12px rgba(255, 138, 92, 0.5);
-  z-index: 1;
-}
-
-.cell.selected .sel-order {
-  position: absolute;
-  top: 2px;
-  right: 3px;
-  font-size: 0.55rem;
-  color: rgba(6, 26, 22, 0.7);
 }
 
 .word-bar {
@@ -545,35 +520,12 @@ body {
   flex: 0 0 auto;
 }
 
-.word-preview {
-  min-height: clamp(1.9rem, 4.5vh, 2.4rem);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.play-hint {
+  margin: 0;
+  text-align: center;
   font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: clamp(0.95rem, 2.6vw, 1.25rem);
-  letter-spacing: 0.18em;
-  color: var(--sand);
-  background: var(--panel);
-  border: 1px solid rgba(125, 255, 179, 0.12);
-  border-radius: 0.75rem;
-  padding: clamp(0.25rem, 0.8vh, 0.4rem) 0.75rem;
-}
-
-.word-preview.empty {
-  color: rgba(200, 235, 224, 0.35);
-  letter-spacing: 0.04em;
-  font-size: clamp(0.72rem, 2.2vw, 0.85rem);
-  font-weight: 500;
-}
-
-.word-preview.valid {
-  color: var(--ink);
-  background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
-  border-color: rgba(125, 255, 179, 0.55);
-  letter-spacing: 0.14em;
-  animation: score-pop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  font-size: clamp(0.68rem, 2vw, 0.8rem);
+  color: rgba(200, 235, 224, 0.45);
 }
 
 .found-words {
@@ -744,10 +696,6 @@ body {
   .play-screen {
     gap: 0.35rem;
   }
-
-  .cell.selected .sel-order {
-    font-size: 0.45rem;
-  }
 }
 
 @media (max-height: 560px) {
@@ -759,7 +707,6 @@ body {
     border-radius: 0.5rem;
   }
 
-  .word-preview,
   .touch-pad .btn {
     border-radius: 0.55rem;
   }

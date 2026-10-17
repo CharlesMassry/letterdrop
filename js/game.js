@@ -284,10 +284,6 @@
     return maxMs;
   }
 
-  function areAdjacent(a, b) {
-    return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
-  }
-
   function activeCellMap(piece) {
     var map = {};
     if (!piece) return map;
@@ -374,7 +370,6 @@
       phase: 'title',
       board: createEmptyBoard(),
       active: null,
-      selection: [],
       score: 0,
       wordsFound: 0,
       foundWords: [],
@@ -382,7 +377,6 @@
       dropIntervalMs: INITIAL_DROP_MS,
       feedback: null,
       feedbackKind: null,
-      selectionValid: false,
       endReason: null,
       /** @type {null|{cells:Array<{row:number,col:number,letter:string}>}} */
       clearing: null,
@@ -409,20 +403,6 @@
       map[m.toRow + ',' + m.col] = m;
     }
     return map;
-  }
-
-  function selectionWord(state) {
-    var out = '';
-    for (var i = 0; i < state.selection.length; i++) {
-      var s = state.selection[i];
-      out += state.board[s.row][s.col] || '';
-    }
-    return out;
-  }
-
-  function refreshSelectionValid(state) {
-    var word = selectionWord(state);
-    state.selectionValid = word.length >= 3 && isDictionaryWord(word);
   }
 
   function resolveActiveOverlap(state) {
@@ -452,8 +432,6 @@
 
     var points = scoreWord(word);
     var upper = word.toUpperCase();
-    state.selection = [];
-    state.selectionValid = false;
     state.score += points;
     state.wordsFound += 1;
     if (!state.foundWords) state.foundWords = [];
@@ -509,8 +487,6 @@
   function endGame(state, reason) {
     state.phase = 'ended';
     state.active = null;
-    state.selection = [];
-    state.selectionValid = false;
     state.clearing = null;
     state.settling = null;
     state.spawnAfterClear = false;
@@ -545,8 +521,6 @@
   function startGame(state) {
     state.phase = 'playing';
     state.board = createEmptyBoard();
-    state.selection = [];
-    state.selectionValid = false;
     state.score = 0;
     state.wordsFound = 0;
     state.foundWords = [];
@@ -555,8 +529,7 @@
     state.spawnAfterClear = false;
     state.timeLeftMs = ROUND_MS;
     state.dropIntervalMs = INITIAL_DROP_MS;
-    state.feedback =
-      'Line up words in a row/column — or tap adjacent letters — to score.';
+    state.feedback = 'Line up a dictionary word in a row or column to score.';
     state.feedbackKind = 'info';
     state.endReason = null;
     state.active = spawnPiece(state.board);
@@ -591,112 +564,6 @@
   function rotate(state) {
     if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     tryRotate(state.board, state.active);
-  }
-
-  function clearSelection(state) {
-    state.selection = [];
-    state.selectionValid = false;
-  }
-
-  function trySelectLinedUpAt(state, row, col) {
-    var words = findLinedUpWords(state.board);
-    var hit = null;
-    for (var i = 0; i < words.length; i++) {
-      for (var j = 0; j < words[i].cells.length; j++) {
-        if (words[i].cells[j].row === row && words[i].cells[j].col === col) {
-          hit = words[i];
-          break;
-        }
-      }
-      if (hit) break;
-    }
-    if (!hit) return false;
-    return applyScoreClear(state, hit.word, hit.cells);
-  }
-
-  function toggleSelect(state, row, col) {
-    if (state.phase !== 'playing' || state.clearing || state.settling) return;
-    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
-    if (!state.board[row][col]) return;
-
-    if (state.selection.length === 0 && trySelectLinedUpAt(state, row, col)) return;
-
-    var idx = -1;
-    for (var i = 0; i < state.selection.length; i++) {
-      if (state.selection[i].row === row && state.selection[i].col === col) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx >= 0) {
-      if (idx === state.selection.length - 1) {
-        state.selection.pop();
-        refreshSelectionValid(state);
-      }
-      return;
-    }
-
-    if (state.selection.length === 0) {
-      state.selection.push({ row: row, col: col });
-      refreshSelectionValid(state);
-      return;
-    }
-
-    var last = state.selection[state.selection.length - 1];
-    if (!areAdjacent(last, { row: row, col: col })) {
-      state.feedback = 'Letters must be adjacent (up/down/left/right).';
-      state.feedbackKind = 'error';
-      return;
-    }
-
-    for (i = 0; i < state.selection.length; i++) {
-      if (state.selection[i].row === row && state.selection[i].col === col) return;
-    }
-
-    state.selection.push({ row: row, col: col });
-    refreshSelectionValid(state);
-
-    if (state.selectionValid) {
-      var word = selectionWord(state).toLowerCase();
-      var cells = state.selection.slice();
-      applyScoreClear(state, word, cells);
-    }
-  }
-
-  function submitWord(state) {
-    if (state.phase !== 'playing' || state.clearing || state.settling) return false;
-    var word = selectionWord(state).toLowerCase();
-
-    if (state.selection.length === 0) {
-      var n = claimLinedUpWords(state);
-      if (n > 0) return true;
-      if (state.feedbackKind === 'ok') return false;
-      state.feedback =
-        'Tap letters in order, or line them up in a row/column — then they score.';
-      state.feedbackKind = 'error';
-      return false;
-    }
-
-    if (state.selection.length < 3) {
-      state.feedback = 'Words need at least 3 letters.';
-      state.feedbackKind = 'error';
-      return false;
-    }
-
-    if (!wordSetHas(word)) {
-      state.feedback = '"' + word.toUpperCase() + "\" isn't in the dictionary.";
-      state.feedbackKind = 'error';
-      return false;
-    }
-
-    var cells = state.selection.slice();
-    var ok = applyScoreClear(state, word, cells);
-    if (!ok) {
-      state.feedback = 'Could not clear those letters — try again.';
-      state.feedbackKind = 'error';
-      return false;
-    }
-    return true;
   }
 
   function tickTimer(state, dtMs) {
@@ -736,10 +603,6 @@
     moveRight: moveRight,
     softDrop: softDrop,
     rotate: rotate,
-    clearSelection: clearSelection,
-    toggleSelect: toggleSelect,
-    selectionWord: selectionWord,
-    submitWord: submitWord,
     tickTimer: tickTimer,
     formatTime: formatTime,
     claimLinedUpWords: claimLinedUpWords,

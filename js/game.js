@@ -9,10 +9,10 @@
   var MIN_DROP_MS = 350;
   /** How long the disintegration animation runs before gravity. */
   var CLEAR_ANIM_MS = 520;
-  /** Base ms per full cell of cascade fall (half-steps split this). */
-  var SETTLE_MS_PER_CELL = 120;
-  var SETTLE_MS_MIN = 280;
-  var SETTLE_MS_MAX = 720;
+  /** Base ms per full cell of cascade fall (eased glide). */
+  var SETTLE_MS_PER_CELL = 150;
+  var SETTLE_MS_MIN = 380;
+  var SETTLE_MS_MAX = 920;
 
   var LETTER_VALUES = {
     A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8, K: 5, L: 1, M: 3,
@@ -211,7 +211,7 @@
   /**
    * Remove cells and apply column gravity.
    * Returns { removed, moves } where moves describe each letter that fell
-   * (for half-cell cascade animation). Logical positions stay on the integer grid.
+   * (for eased cascade animation). Logical positions stay on the integer grid.
    */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];
@@ -237,11 +237,13 @@
         var toRow = ROWS - 1 - i;
         board[toRow][c] = stack[i].letter;
         if (stack[i].fromRow !== toRow) {
+          var fall = toRow - stack[i].fromRow;
           moves.push({
             letter: stack[i].letter,
             col: c,
             fromRow: stack[i].fromRow,
             toRow: toRow,
+            durationMs: settleDurationForFall(fall),
           });
         }
       }
@@ -249,15 +251,19 @@
     return { removed: removed, moves: moves };
   }
 
-  function settleDurationMs(moves) {
-    var maxFall = 0;
-    for (var i = 0; i < moves.length; i++) {
-      var fall = moves[i].toRow - moves[i].fromRow;
-      if (fall > maxFall) maxFall = fall;
-    }
-    var ms = SETTLE_MS_MIN + maxFall * SETTLE_MS_PER_CELL;
+  function settleDurationForFall(fall) {
+    var ms = SETTLE_MS_MIN + fall * SETTLE_MS_PER_CELL;
     if (ms > SETTLE_MS_MAX) ms = SETTLE_MS_MAX;
     return ms;
+  }
+
+  function settleDurationMs(moves) {
+    var maxMs = SETTLE_MS_MIN;
+    for (var i = 0; i < moves.length; i++) {
+      var ms = moves[i].durationMs || settleDurationForFall(moves[i].toRow - moves[i].fromRow);
+      if (ms > maxMs) maxMs = ms;
+    }
+    return maxMs;
   }
 
   function areAdjacent(a, b) {
@@ -441,7 +447,7 @@
     return true;
   }
 
-  /** After disintegration: apply gravity and optionally play half-step cascade settle. */
+  /** After disintegration: apply gravity and optionally play eased cascade settle. */
   function finishClearing(state) {
     if (!state.clearing) return false;
     var result = removeCellsAndApplyGravity(state.board, state.clearing.cells);
@@ -532,7 +538,7 @@
     state.timeLeftMs = ROUND_MS;
     state.dropIntervalMs = INITIAL_DROP_MS;
     state.feedback =
-      'Line up words in a row/column to score — or tap adjacent letters, then Submit.';
+      'Line up words in a row/column — or tap adjacent letters — to score.';
     state.feedbackKind = 'info';
     state.endReason = null;
     state.active = spawnPiece(state.board);

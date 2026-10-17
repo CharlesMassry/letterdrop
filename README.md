@@ -35,8 +35,8 @@ Then open http://127.0.0.1:3847/
 1. **Move** with `←` `→` `↓` (on-screen controls on touch).
 2. **↑** / **X** rotates; **Space** hard-drops.
 3. **Line up** letters in a row or column — dictionary words score when a piece lands.
-4. Or **tap** adjacent landed letters — a valid word auto-scores (**Submit** / **Enter** also work).
-5. Cleared letters disintegrate; remaining tiles settle in **half-cell cascade steps**.
+4. Or **tap** adjacent landed letters — a valid word auto-scores (**Esc** clears a partial selection).
+5. Cleared letters disintegrate; remaining tiles **glide** down into place.
 6. When time runs out or the board fills, see your score and play again.
 
 ## Stack

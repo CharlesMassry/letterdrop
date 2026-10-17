@@ -192,17 +192,15 @@
         if (settleMove) {
           var fall = settleMove.toRow - settleMove.fromRow;
           if (fall < 1) fall = 1;
-          var halfSteps = fall * 2;
+          var tileMs = settleMove.durationMs || settleMs;
           styleAttr =
             ' style="--fall-cells:' +
             fall +
             ';--settle-ms:' +
-            settleMs +
+            tileMs +
             'ms;animation:cascade-settle ' +
-            settleMs +
-            'ms steps(' +
-            halfSteps +
-            ',end) both"';
+            tileMs +
+            'ms var(--settle-ease) both"';
         }
         cells.push(
           '<button type="button" class="' +
@@ -267,7 +265,7 @@
     if (!word) previewClass += ' empty';
     if (state.selectionValid) previewClass += ' valid';
     var previewText = !word
-      ? 'Line up a word, or tap adjacent letters…'
+      ? 'Line up a word — or tap letters…'
       : state.selectionValid
         ? word + ' ✓'
         : word;
@@ -305,10 +303,7 @@
       (state.feedback || '') +
       '</div>' +
       renderFoundWords() +
-      '<div class="actions">' +
-      '<button type="button" class="btn btn-ghost" data-action="clear">Clear</button>' +
-      '<button type="button" class="btn btn-coral" data-action="submit">Submit</button>' +
-      '</div></div>' +
+      '</div>' +
       '<div class="touch-pad" aria-label="Move controls">' +
       '<button type="button" class="btn" data-action="rotate">↻</button>' +
       '<button type="button" class="btn" data-action="hard">↓↓</button>' +
@@ -317,7 +312,7 @@
       '<button type="button" class="btn" data-action="down">↓</button>' +
       '<button type="button" class="btn" data-action="right">→</button>' +
       '</div>' +
-      '<p class="hint-keys">Arrows move · ↑ rotate · Space drop · line up words to score · Esc clear</p>' +
+      '<p class="hint-keys">Arrows move · ↑ rotate · Space drop · line up or tap words to score · Esc clears selection</p>' +
       '</main>'
     );
   }
@@ -428,17 +423,6 @@
     }
     if (action === 'title') {
       resetTitle();
-      return;
-    }
-    if (action === 'submit') {
-      handleSubmit();
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      return;
-    }
-    if (action === 'clear') {
-      G.clearSelection(state);
-      markDirty();
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       return;
     }
     if (action === 'left') {

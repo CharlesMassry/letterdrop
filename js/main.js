@@ -19,6 +19,8 @@
   var lastTimerText = '';
   var lastSubmitAt = 0;
   var lastSubmitSig = '';
+  var clearAnimTimer = null;
+  var clearAnimToken = 0;
 
   function brandSpans(text) {
     var out = '';
@@ -29,8 +31,23 @@
     return out;
   }
 
+  function scheduleClearAnimation() {
+    if (!state.clearing || clearAnimTimer !== null) return;
+    var token = ++clearAnimToken;
+    clearAnimTimer = window.setTimeout(function () {
+      if (token !== clearAnimToken) return;
+      clearAnimTimer = null;
+      if (!state.clearing) return;
+      G.finishClearing(state);
+      scheduleFeedbackClear();
+      // If another word started clearing (cascade), schedule its animation too.
+      markDirty();
+    }, G.CLEAR_ANIM_MS);
+  }
+
   function markDirty() {
     needsRender = true;
+    if (state.clearing) scheduleClearAnimation();
   }
 
   function renderTitle() {
@@ -97,23 +114,36 @@
     );
   }
 
+  function shardMarkup() {
+    return (
+      '<span class="shards" aria-hidden="true">' +
+      '<i></i><i></i><i></i><i></i><i></i><i></i>' +
+      '</span>'
+    );
+  }
+
   function renderBoard() {
     var activeMap = G.activeCellMap(state.active);
+    var clearing = G.clearingKeySet(state);
     var cells = [];
     for (var r = 0; r < G.ROWS; r++) {
       for (var c = 0; c < G.COLS; c++) {
         var key = r + ',' + c;
-        var activeLetter = activeMap[key];
-        var boarded = state.board[r][c];
+        var clearingLetter = clearing[key];
+        var activeLetter = clearingLetter ? null : activeMap[key];
+        var boarded = clearingLetter || state.board[r][c];
         var letter = activeLetter || boarded || '';
         var classes = ['cell'];
-        if (activeLetter) classes.push('active');
+        if (clearingLetter) classes.push('filled', 'disintegrating');
+        else if (activeLetter) classes.push('active');
         else if (boarded) classes.push('filled');
         var selIdx = -1;
-        for (var i = 0; i < state.selection.length; i++) {
-          if (state.selection[i].row === r && state.selection[i].col === c) {
-            selIdx = i;
-            break;
+        if (!clearingLetter) {
+          for (var i = 0; i < state.selection.length; i++) {
+            if (state.selection[i].row === r && state.selection[i].col === c) {
+              selIdx = i;
+              break;
+            }
           }
         }
         if (selIdx >= 0) classes.push('selected');
@@ -130,12 +160,15 @@
             r +
             '" data-col="' +
             c +
-            '" aria-label="' +
+            '"' +
+            (clearingLetter ? ' disabled' : '') +
+            ' aria-label="' +
             (letter ? 'Letter ' + letter + ', ' + G.letterValue(letter) + ' points' : 'Empty') +
             '">' +
             (letter ? '<span class="cell-letter">' + letter + '</span>' : '') +
             val +
             order +
+            (clearingLetter ? shardMarkup() : '') +
             '</button>',
         );
       }

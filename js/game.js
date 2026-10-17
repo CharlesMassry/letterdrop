@@ -7,6 +7,8 @@
   var ROUND_MS = 120000;
   var INITIAL_DROP_MS = 900;
   var MIN_DROP_MS = 350;
+  /** How long the disintegration animation runs before gravity. */
+  var CLEAR_ANIM_MS = 520;
 
   var LETTER_VALUES = {
     A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8, K: 5, L: 1, M: 3,
@@ -328,7 +330,20 @@
       feedbackKind: null,
       selectionValid: false,
       endReason: null,
+      /** @type {null|{cells:Array<{row:number,col:number,letter:string}>}} */
+      clearing: null,
+      spawnAfterClear: false,
     };
+  }
+
+  function clearingKeySet(state) {
+    var set = {};
+    if (!state.clearing) return set;
+    for (var i = 0; i < state.clearing.cells.length; i++) {
+      var c = state.clearing.cells[i];
+      set[c.row + ',' + c.col] = c.letter;
+    }
+    return set;
   }
 
   function selectionWord(state) {
@@ -355,10 +370,22 @@
     }
   }
 
+  /**
+   * Score the word and start disintegration — board cells stay until finishClearing().
+   */
   function applyScoreClear(state, word, cells) {
+    if (state.clearing) return false;
+    var snapshot = [];
+    var i;
+    for (i = 0; i < cells.length; i++) {
+      var row = cells[i].row;
+      var col = cells[i].col;
+      var letter = state.board[row] && state.board[row][col];
+      if (letter) snapshot.push({ row: row, col: col, letter: letter });
+    }
+    if (snapshot.length === 0) return false;
+
     var points = scoreWord(word);
-    var cleared = removeCellsAndApplyGravity(state.board, cells);
-    if (cleared.length === 0) return false;
     var upper = word.toUpperCase();
     state.selection = [];
     state.selectionValid = false;
@@ -369,20 +396,30 @@
     state.feedback = '+' + points + ' · ' + upper;
     state.feedbackKind = 'ok';
     state.dropIntervalMs = Math.max(MIN_DROP_MS, INITIAL_DROP_MS - state.wordsFound * 25);
+    state.clearing = { cells: snapshot };
+    return true;
+  }
+
+  /** After the disintegration animation: remove tiles, gravity, then claim more words. */
+  function finishClearing(state) {
+    if (!state.clearing) return false;
+    removeCellsAndApplyGravity(state.board, state.clearing.cells);
+    state.clearing = null;
     resolveActiveOverlap(state);
+    claimLinedUpWords(state);
+    if (!state.clearing && state.spawnAfterClear) {
+      state.spawnAfterClear = false;
+      spawnNext(state);
+    }
     return true;
   }
 
   function claimLinedUpWords(state) {
     if (state.phase !== 'playing') return 0;
-    var claimed = 0;
-    for (var guard = 0; guard < 8; guard++) {
-      var words = findLinedUpWords(state.board);
-      if (!words.length) break;
-      if (!applyScoreClear(state, words[0].word, words[0].cells)) break;
-      claimed += 1;
-    }
-    return claimed;
+    if (state.clearing) return 0;
+    var words = findLinedUpWords(state.board);
+    if (!words.length) return 0;
+    return applyScoreClear(state, words[0].word, words[0].cells) ? 1 : 0;
   }
 
   function endGame(state, reason) {
@@ -390,9 +427,21 @@
     state.active = null;
     state.selection = [];
     state.selectionValid = false;
+    state.clearing = null;
+    state.spawnAfterClear = false;
     state.endReason = reason;
     state.feedback = null;
     state.feedbackKind = null;
+  }
+
+  function spawnNext(state) {
+    if (state.phase !== 'playing') return;
+    if (isBoardFull(state.board)) {
+      endGame(state, 'full');
+      return;
+    }
+    state.active = spawnPiece(state.board);
+    if (!state.active) endGame(state, 'full');
   }
 
   function lockAndSpawn(state) {
@@ -401,13 +450,11 @@
       state.active = null;
     }
     claimLinedUpWords(state);
-    if (state.phase !== 'playing') return;
-    if (isBoardFull(state.board)) {
-      endGame(state, 'full');
+    if (state.clearing) {
+      state.spawnAfterClear = true;
       return;
     }
-    state.active = spawnPiece(state.board);
-    if (!state.active) endGame(state, 'full');
+    spawnNext(state);
   }
 
   function startGame(state) {
@@ -418,6 +465,8 @@
     state.score = 0;
     state.wordsFound = 0;
     state.foundWords = [];
+    state.clearing = null;
+    state.spawnAfterClear = false;
     state.timeLeftMs = ROUND_MS;
     state.dropIntervalMs = INITIAL_DROP_MS;
     state.feedback =
@@ -428,33 +477,33 @@
   }
 
   function tickDrop(state) {
-    if (state.phase !== 'playing' || !state.active) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing) return;
     if (!tryMoveDown(state.board, state.active)) lockAndSpawn(state);
   }
 
   function hardDrop(state) {
-    if (state.phase !== 'playing' || !state.active) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing) return;
     while (tryMoveDown(state.board, state.active)) { /* fall */ }
     lockAndSpawn(state);
   }
 
   function moveLeft(state) {
-    if (state.phase !== 'playing' || !state.active) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing) return;
     tryMoveHorizontal(state.board, state.active, -1);
   }
 
   function moveRight(state) {
-    if (state.phase !== 'playing' || !state.active) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing) return;
     tryMoveHorizontal(state.board, state.active, 1);
   }
 
   function softDrop(state) {
-    if (state.phase !== 'playing' || !state.active) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing) return;
     if (!tryMoveDown(state.board, state.active)) lockAndSpawn(state);
   }
 
   function rotate(state) {
-    if (state.phase !== 'playing' || !state.active) return;
+    if (state.phase !== 'playing' || !state.active || state.clearing) return;
     tryRotate(state.board, state.active);
   }
 
@@ -476,13 +525,11 @@
       if (hit) break;
     }
     if (!hit) return false;
-    applyScoreClear(state, hit.word, hit.cells);
-    claimLinedUpWords(state);
-    return true;
+    return applyScoreClear(state, hit.word, hit.cells);
   }
 
   function toggleSelect(state, row, col) {
-    if (state.phase !== 'playing') return;
+    if (state.phase !== 'playing' || state.clearing) return;
     if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
     if (!state.board[row][col]) return;
 
@@ -527,12 +574,11 @@
       var word = selectionWord(state).toLowerCase();
       var cells = state.selection.slice();
       applyScoreClear(state, word, cells);
-      claimLinedUpWords(state);
     }
   }
 
   function submitWord(state) {
-    if (state.phase !== 'playing') return false;
+    if (state.phase !== 'playing' || state.clearing) return false;
     var word = selectionWord(state).toLowerCase();
 
     if (state.selection.length === 0) {
@@ -564,7 +610,6 @@
       state.feedbackKind = 'error';
       return false;
     }
-    claimLinedUpWords(state);
     return true;
   }
 
@@ -604,6 +649,9 @@
     tickTimer: tickTimer,
     formatTime: formatTime,
     claimLinedUpWords: claimLinedUpWords,
+    finishClearing: finishClearing,
+    clearingKeySet: clearingKeySet,
+    CLEAR_ANIM_MS: CLEAR_ANIM_MS,
     findLinedUpWords: findLinedUpWords,
     isDictionaryWord: isDictionaryWord,
     activeCellMap: activeCellMap,

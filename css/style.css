@@ -366,6 +366,78 @@ body {
   color: rgba(6, 26, 22, 0.65);
 }
 
+/* —— Word-clear disintegration (2 beats: crack flash + shard scatter) —— */
+.cell.disintegrating {
+  z-index: 5;
+  overflow: visible;
+  pointer-events: none;
+  cursor: default;
+  animation: tile-crack 0.18s ease-out forwards;
+  box-shadow: 0 0 18px rgba(255, 138, 92, 0.55);
+}
+
+.cell.disintegrating .cell-letter {
+  animation: letter-blast 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.cell.disintegrating .cell-val,
+.cell.disintegrating .sel-order {
+  animation: fade-shard 0.28s ease-out forwards;
+}
+
+.cell.disintegrating .shards {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cell.disintegrating .shards i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38%;
+  height: 38%;
+  margin: -19% 0 0 -19%;
+  border-radius: 0.2rem;
+  background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
+  box-shadow: 0 0 6px rgba(255, 138, 92, 0.35);
+  animation: shard-fly 0.52s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+.cell.disintegrating .shards i:nth-child(1) { --dx: -18px; --dy: -22px; --rot: -40deg; animation-delay: 0.02s; }
+.cell.disintegrating .shards i:nth-child(2) { --dx: 16px; --dy: -20px; --rot: 35deg; animation-delay: 0.04s; }
+.cell.disintegrating .shards i:nth-child(3) { --dx: -22px; --dy: 8px; --rot: -70deg; animation-delay: 0.06s; }
+.cell.disintegrating .shards i:nth-child(4) { --dx: 20px; --dy: 10px; --rot: 55deg; animation-delay: 0.05s; }
+.cell.disintegrating .shards i:nth-child(5) { --dx: -6px; --dy: 22px; --rot: 15deg; animation-delay: 0.08s; }
+.cell.disintegrating .shards i:nth-child(6) { --dx: 8px; --dy: -6px; --rot: -20deg; width: 28%; height: 28%; animation-delay: 0.03s; }
+
+@keyframes tile-crack {
+  0% { filter: brightness(1); transform: scale(1); }
+  40% { filter: brightness(1.35); transform: scale(1.08); }
+  100% { filter: brightness(1.1); transform: scale(1.02); background: transparent; box-shadow: none; }
+}
+
+@keyframes letter-blast {
+  0% { opacity: 1; transform: scale(1) translateY(0); }
+  35% { opacity: 1; transform: scale(1.15) translateY(-2px); }
+  100% { opacity: 0; transform: scale(0.4) translateY(-10px); }
+}
+
+@keyframes fade-shard {
+  to { opacity: 0; }
+}
+
+@keyframes shard-fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.35);
+  }
+}
+
 .cell.filled {
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);

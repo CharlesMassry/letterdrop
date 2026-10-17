@@ -30,6 +30,9 @@
   var cachedMetrics = null;
   var settleFxStarted = false;
   var forceBoardRebuild = false;
+  /** Classic Tetris soft-drop interval while ↓ is held. */
+  var SOFT_DROP_MS = 42;
+  var softDropHeld = false;
 
   function cancelAnimTimers() {
     clearAnimToken += 1;
@@ -46,6 +49,21 @@
     boardMotionLock = null;
     settleFxStarted = false;
     cachedMetrics = null;
+    softDropHeld = false;
+  }
+
+  function fallInterval() {
+    return softDropHeld ? SOFT_DROP_MS : state.dropIntervalMs || 1;
+  }
+
+  /** Keep fractional fall progress continuous when switching soft-drop on/off. */
+  function setSoftDrop(held) {
+    held = !!held;
+    if (held === softDropHeld) return;
+    var prev = fallInterval();
+    softDropHeld = held;
+    var next = fallInterval();
+    if (prev > 0) dropAccum = dropAccum * (next / prev);
   }
 
   function scheduleClearAnimation() {
@@ -94,7 +112,7 @@
   function dropFrac() {
     if (!state.active || hardDropAnim || state.clearing || state.settling) return 0;
     if (!G.canMoveDown(state)) return 0;
-    var interval = state.dropIntervalMs || 1;
+    var interval = fallInterval();
     var f = dropAccum / interval;
     if (f < 0) return 0;
     if (f > 0.999) return 0.999;
@@ -116,34 +134,54 @@
     return state.active.row + dropFrac();
   }
 
+  /**
+   * Derive track geometry from real grid cells relative to the FX layer.
+   * (Earlier bug: gap was read from `.board`, which has no gap — only `.board-grid`
+   * does — so stepX/Y ignored gaps and tiles drifted off-column.)
+   */
   function readBoardMetrics(boardEl) {
     if (!boardEl) return null;
-    var slot = boardEl.querySelector('.cell');
-    if (!slot) return null;
-    var cs = window.getComputedStyle(boardEl);
-    var padL = parseFloat(cs.paddingLeft) || 0;
-    var padT = parseFloat(cs.paddingTop) || 0;
-    var gap = parseFloat(cs.rowGap || cs.gap) || 0;
-    var rect = slot.getBoundingClientRect();
+    var layer = boardEl.querySelector('.board-fx');
+    var cells = boardEl.querySelectorAll('.board-grid > .cell');
+    if (!layer || cells.length < G.COLS + 1) return null;
+    var layerRect = layer.getBoundingClientRect();
+    var a = cells[0].getBoundingClientRect();
+    var right = cells[1].getBoundingClientRect();
+    var below = cells[G.COLS].getBoundingClientRect();
+    var stepX = right.left - a.left;
+    var stepY = below.top - a.top;
+    if (!(stepX > 0) || !(stepY > 0)) return null;
     return {
-      padL: padL,
-      padT: padT,
-      gap: gap,
-      cellW: rect.width,
-      cellH: rect.height,
-      stepX: rect.width + gap,
-      stepY: rect.height + gap,
+      originX: a.left - layerRect.left,
+      originY: a.top - layerRect.top,
+      cellW: a.width,
+      cellH: a.height,
+      stepX: stepX,
+      stepY: stepY,
     };
   }
 
   function getMetrics() {
-    if (cachedMetrics) return cachedMetrics;
     var boardEl = app.querySelector('.board');
+    if (!boardEl) return null;
+    var w = boardEl.clientWidth;
+    var h = boardEl.clientHeight;
+    if (
+      cachedMetrics &&
+      cachedMetrics._w === w &&
+      cachedMetrics._h === h
+    ) {
+      return cachedMetrics;
+    }
     cachedMetrics = readBoardMetrics(boardEl);
+    if (cachedMetrics) {
+      cachedMetrics._w = w;
+      cachedMetrics._h = h;
+    }
     return cachedMetrics;
   }
 
-  function tileInner(letter, kind) {
+  function tileInner(letter) {
     return (
       '<span class="cell-letter">' +
       letter +
@@ -158,9 +196,9 @@
     el.style.height = metrics.cellH + 'px';
     el.style.transform =
       'translate(' +
-      (metrics.padL + col * metrics.stepX) +
+      (metrics.originX + col * metrics.stepX) +
       'px,' +
-      (metrics.padT + row * metrics.stepY) +
+      (metrics.originY + row * metrics.stepY) +
       'px)';
   }
 
@@ -646,22 +684,6 @@
     return true;
   }
 
-  function softDropBoost() {
-    if (
-      state.phase !== 'playing' ||
-      !state.active ||
-      state.clearing ||
-      state.settling ||
-      hardDropAnim
-    ) {
-      return;
-    }
-    // Advance smoothly within the fall interval instead of jumping a cell.
-    dropAccum += Math.max(55, state.dropIntervalMs * 0.42);
-    if (processDropTicks()) markDirty(true);
-    else syncActiveLayer();
-  }
-
   function onStart() {
     cancelAnimTimers();
     G.startGame(state);
@@ -706,6 +728,24 @@
     },
   };
 
+  app.addEventListener('pointerdown', function (e) {
+    var downBtn = e.target.closest ? e.target.closest('[data-action="down"]') : null;
+    if (downBtn) {
+      e.preventDefault();
+      setSoftDrop(true);
+    }
+  });
+
+  window.addEventListener('pointerup', function () {
+    setSoftDrop(false);
+  });
+  window.addEventListener('pointercancel', function () {
+    setSoftDrop(false);
+  });
+  window.addEventListener('blur', function () {
+    setSoftDrop(false);
+  });
+
   app.addEventListener('click', function (e) {
     var target = e.target.closest
       ? e.target.closest('[data-action], [data-row]')
@@ -734,7 +774,7 @@
       return;
     }
     if (action === 'down') {
-      softDropBoost();
+      // Soft drop is driven by pointer/key hold — ignore click echo.
       return;
     }
     if (action === 'hard') {
@@ -744,7 +784,7 @@
     if (action === 'rotate') {
       if (hardDropAnim) return;
       G.rotate(state);
-      dropAccum = Math.min(dropAccum, state.dropIntervalMs * 0.85);
+      dropAccum = Math.min(dropAccum, fallInterval() * 0.85);
       syncActiveLayer();
       return;
     }
@@ -788,7 +828,7 @@
         break;
       case 'ArrowDown':
         e.preventDefault();
-        softDropBoost();
+        setSoftDrop(true);
         break;
       case 'ArrowUp':
       case 'x':
@@ -798,7 +838,7 @@
         e.preventDefault();
         if (hardDropAnim) break;
         G.rotate(state);
-        dropAccum = Math.min(dropAccum, state.dropIntervalMs * 0.85);
+        dropAccum = Math.min(dropAccum, fallInterval() * 0.85);
         syncActiveLayer();
         break;
       case ' ':
@@ -821,6 +861,12 @@
     }
   });
 
+  window.addEventListener('keyup', function (e) {
+    if (e.key === 'ArrowDown') {
+      setSoftDrop(false);
+    }
+  });
+
   window.addEventListener('resize', function () {
     cachedMetrics = null;
     if (state.phase === 'playing') syncActiveLayer();
@@ -828,15 +874,16 @@
 
   function processDropTicks() {
     var structural = false;
+    var interval = fallInterval();
     while (
-      dropAccum >= state.dropIntervalMs &&
+      dropAccum >= interval &&
       state.phase === 'playing' &&
       state.active &&
       !state.clearing &&
       !state.settling &&
       !hardDropAnim
     ) {
-      dropAccum -= state.dropIntervalMs;
+      dropAccum -= interval;
       var before = state.active;
       G.tickDrop(state);
       if (!state.active || state.active !== before || state.clearing) {
@@ -844,6 +891,7 @@
         dropAccum = 0;
         break;
       }
+      interval = fallInterval();
     }
     return structural;
   }

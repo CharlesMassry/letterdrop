@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host --port 3847 --strictPort",
+    "play": "node scripts/static-server.mjs",
+    "start": "npm run build && npm run play"
   },
   "devDependencies": {
     "typescript": "~6.0.2",

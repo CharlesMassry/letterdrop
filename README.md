@@ -1,31 +1,58 @@
 # Letterdrop
 
-Falling letter **tetrominoes** meet word-building. Guide multi-cell letter blocks (7 shapes: I, L, J, O, T, S, Z) down an 8×12 board, then chain adjacent landed letters into English words before the two-minute round ends.
+Falling letter tetrominoes meet word-building. Line up dictionary words on an 8×12 board before the two-minute timer ends.
 
-Longer words and rarer letters score more (Scrabble-style values). Scoring a word clears those tiles and the board settles. Invalid submissions give quick feedback without stopping play.
-
-## How to play
-
-1. **Move** the falling piece with `←` `→` `↓` (or on-screen controls on touch).
-2. **↑** (or **X**) rotates; **Space** hard-drops.
-3. **Line up** letters in a contiguous row or column — dictionary words score automatically when a piece lands (and clear with gravity).
-4. Or **tap** adjacent landed letters in order — a valid word auto-scores (you can also press **Submit** / **Enter**). **Esc** clears a partial selection.
-5. Survive the stack and the clock — when time runs out (or the board fills), see your score and play again.
-
-## Run locally
+## Play (easiest — do this)
 
 ```bash
 npm install
-npm run dev
+npm start
 ```
 
-Then open the URL Vite prints (default in this project: port **3847**).
+Then open **http://127.0.0.1:3847** in your browser.
+
+`npm start` = build a static site into `dist/` + serve it. Leave the terminal open while you play. Ctrl+C stops the server.
+
+Already built once?
 
 ```bash
-npm run build   # production build to dist/
-npm run preview # preview the production build
+npm run play
+```
+
+### If the page “hangs” or never loads (Windows / WSL)
+
+That almost always means **no game server is running**, or the browser opened a bad URL:
+
+| What you did | What happens |
+| --- | --- |
+| Opened `http://127.0.0.1:3847` with no terminal server | Browser spins / pending forever |
+| Double-clicked `index.html` (`file://…`) | ES modules fail — blank or hung page |
+| Used Vite `npm run dev` then closed the terminal | Dev server died; refresh hangs |
+
+**Fix:** in the project folder run `npm start`, wait until you see `Letterdrop (static build)`, then visit **http://127.0.0.1:3847** (not `file://`).
+
+WSL tip: run the commands inside your WSL distro, then open that URL in Windows Chrome/Edge.
+
+### Public hosted URL
+
+This repo is **private on Origin** with no GitHub Pages / public static host hooked up, so there is **no shareable https play link** from this environment. Anyone who can clone can run `npm start` locally. If you later enable GitHub Pages (or any static host), publish the contents of `dist/` — it is plain HTML/CSS/JS with relative asset paths.
+
+## How to play
+
+1. **Move** with `←` `→` `↓` (on-screen controls on touch).
+2. **↑** / **X** rotates; **Space** hard-drops.
+3. **Line up** letters in a row or column — dictionary words score when a piece lands.
+4. Or **tap** adjacent landed letters — a valid word auto-scores (**Submit** / **Enter** also work).
+5. When time runs out or the board fills, see your score and play again.
+
+## Dev (optional)
+
+```bash
+npm run dev       # Vite HMR on port 3847
+npm run build     # writes static files to dist/
+npm run preview   # Vite’s static preview of dist/
 ```
 
 ## Stack
 
-Vanilla TypeScript + Vite. No backend, auth, or database — the dictionary is bundled (~7k common English words, 3–8 letters).
+Vanilla TypeScript + Vite. `dist/` after build is fully static (no backend, no auth, no database). Dictionary (~7k common English words) is bundled into the JS.

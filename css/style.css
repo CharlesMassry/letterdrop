@@ -307,6 +307,8 @@ body {
 .board {
   --board-gap: clamp(2px, 0.4vw, 4px);
   --settle-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Padding keeps tile chrome inside the clip; overflow only catches true escapees. */
+  --board-pad: clamp(8px, 1.4vw, 12px);
   position: relative;
   aspect-ratio: 8 / 12;
   /* Fit remaining viewport slot without forcing overflow below */
@@ -314,7 +316,7 @@ body {
   height: auto;
   max-height: 100cqh;
   max-width: 100%;
-  padding: clamp(4px, 0.9vw, 8px);
+  padding: var(--board-pad);
   background: rgba(4, 20, 18, 0.55);
   border: 1px solid rgba(125, 255, 179, 0.12);
   border-radius: clamp(0.55rem, 1.8vw, 1rem);
@@ -325,6 +327,16 @@ body {
   isolation: isolate;
 }
 
+/* Play field = grid + FX; sized to content box so tiles aren't mid-cropped by chrome. */
+.board-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -332,7 +344,8 @@ body {
   gap: var(--board-gap);
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  overflow: visible;
 }
 
 .board-fx {
@@ -340,8 +353,7 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 3;
-  overflow: hidden;
-  border-radius: inherit;
+  overflow: visible;
 }
 
 .fx-tile {
@@ -379,13 +391,14 @@ body {
 .fx-tile.fx-active {
   z-index: 5;
   background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
-  box-shadow: 0 0 12px rgba(125, 255, 179, 0.45);
+  /* Inset glow — outer shadows were getting hard-cropped mid-tile. */
+  box-shadow: inset 0 0 0 1px rgba(125, 255, 179, 0.35);
 }
 
 .fx-tile.fx-settle {
   z-index: 4;
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2);
 }
 
 .cell {
@@ -404,6 +417,9 @@ body {
   color: var(--ink);
   user-select: none;
   pointer-events: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .cell-letter {
@@ -432,7 +448,7 @@ body {
   pointer-events: none;
   cursor: default;
   animation: tile-crack 0.18s ease-out forwards;
-  box-shadow: 0 0 18px rgba(255, 138, 92, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 138, 92, 0.55);
 }
 
 .cell.disintegrating .cell-letter {
@@ -498,7 +514,7 @@ body {
 
 .cell.filled {
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2);
 }
 
 .word-bar {

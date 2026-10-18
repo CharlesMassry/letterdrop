@@ -148,10 +148,12 @@
    */
   function readBoardMetrics(boardEl) {
     if (!boardEl) return null;
+    var stage = boardEl.querySelector('.board-stage') || boardEl;
     var layer = boardEl.querySelector('.board-fx');
     var cells = boardEl.querySelectorAll('.board-grid > .cell');
     if (!layer || cells.length < G.COLS + 1) return null;
-    var layerRect = layer.getBoundingClientRect();
+    // Position relative to the stage (same box as the grid), not the padded board chrome.
+    var originRect = stage.getBoundingClientRect();
     var a = cells[0].getBoundingClientRect();
     var right = cells[1].getBoundingClientRect();
     var below = cells[G.COLS].getBoundingClientRect();
@@ -159,8 +161,8 @@
     var stepY = below.top - a.top;
     if (!(stepX > 0) || !(stepY > 0)) return null;
     return {
-      originX: a.left - layerRect.left,
-      originY: a.top - layerRect.top,
+      originX: a.left - originRect.left,
+      originY: a.top - originRect.top,
       cellW: a.width,
       cellH: a.height,
       stepX: stepX,
@@ -418,12 +420,13 @@
     }
     return (
       '<div class="board" role="grid" aria-label="Letter board">' +
+      '<div class="board-stage">' +
       '<div class="board-grid">' +
       cells.join('') +
       '</div>' +
       '<div class="board-fx" data-fx="settle" aria-hidden="true"></div>' +
       '<div class="board-fx" data-fx="active" aria-hidden="true"></div>' +
-      '</div>'
+      '</div></div>'
     );
   }
 

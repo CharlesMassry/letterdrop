@@ -312,6 +312,8 @@ body {
   --settle-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --board-radius: clamp(0.55rem, 1.8vw, 1rem);
   --board-pad: clamp(10px, 1.6vw, 16px);
+  /* Floor strip below the 12-row grid — clear gutter under the last row. */
+  --board-floor: clamp(20px, 4cqw, 32px);
   position: relative;
   aspect-ratio: 8 / 12;
   width: min(100cqw, calc(100cqh * 8 / 12));
@@ -325,24 +327,49 @@ body {
   box-shadow:
     inset 0 0 40px rgba(0, 0, 0, 0.28),
     0 0 48px var(--glow);
-  /* Critical: do not clip letter faces. Radius is paint-only. */
+  /* Never clip letter faces. Radius is paint-only. */
   overflow: visible;
-  isolation: isolate;
 }
 
-/* Play field: locked-letter grid + motion tiles sharing one box model. */
+/*
+ * Stage = playfield (12×8 grid + motion) stacked above an explicit floor gutter.
+ * Bottom-row tiles sit on the playfield floor, not flush to the stage edge.
+ */
 .board-stage {
-  /* Track math lives here so 100% = stage (same box the grid fills). */
-  --tile-w: calc((100% - (var(--cols) - 1) * var(--board-gap)) / var(--cols));
-  --tile-h: calc((100% - (var(--rows) - 1) * var(--board-gap)) / var(--rows));
-  --step-x: calc(var(--tile-w) + var(--board-gap));
-  --step-y: calc(var(--tile-h) + var(--board-gap));
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* air between last row and floor line — rounded bottoms stay readable */
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: visible;
+}
+
+.board-playfield {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  overflow: visible;
+  /* Track math: 100% = playfield (same box the grid fills). */
+  --tile-w: calc((100% - (var(--cols) - 1) * var(--board-gap)) / var(--cols));
+  --tile-h: calc((100% - (var(--rows) - 1) * var(--board-gap)) / var(--rows));
+  --step-x: calc(var(--tile-w) + var(--board-gap));
+  --step-y: calc(var(--tile-h) + var(--board-gap));
+}
+
+.board-floor {
+  flex: 0 0 var(--board-floor);
+  width: 100%;
+  pointer-events: none;
+  /* Readable floor so complete tile bottoms aren't mistaken for a crop. */
+  border-top: 1px solid rgba(125, 255, 179, 0.14);
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.18),
+    rgba(0, 0, 0, 0.02) 70%
+  );
 }
 
 .board-grid {
@@ -372,7 +399,7 @@ body {
   width: var(--tile-w);
   height: var(--tile-h);
   box-sizing: border-box;
-  border-radius: 0.35rem;
+  border-radius: 0.65rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -390,8 +417,8 @@ body {
 
 .motion-tile .cell-val {
   position: absolute;
-  left: 2px;
-  bottom: 1px;
+  left: 3px;
+  bottom: 3px;
   font-size: clamp(0.4rem, 3.2cqw, 0.55rem);
   font-weight: 600;
   line-height: 1;
@@ -408,7 +435,8 @@ body {
 .motion-tile.motion-settle {
   z-index: 4;
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+  /* Soft face shade — a hard inset bottom edge read as a crop line. */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .cell {
@@ -416,7 +444,7 @@ body {
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 0.35rem;
+  border-radius: 0.65rem;
   background: transparent;
   display: flex;
   align-items: center;
@@ -439,8 +467,8 @@ body {
 
 .cell-val {
   position: absolute;
-  left: 2px;
-  bottom: 1px;
+  left: 3px;
+  bottom: 3px;
   font-size: clamp(0.4rem, 3.2cqw, 0.55rem);
   font-weight: 600;
   line-height: 1;
@@ -525,7 +553,8 @@ body {
 
 .cell.filled {
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+  /* Soft outline only — hard inset bottom edge looked like a crop. */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .word-bar {

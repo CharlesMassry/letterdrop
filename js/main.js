@@ -364,11 +364,14 @@
     return (
       '<div class="board" role="grid" aria-label="Letter board">' +
       '<div class="board-stage">' +
+      '<div class="board-playfield">' +
       '<div class="board-grid">' +
       cells.join('') +
       '</div>' +
       '<div class="board-motion" data-motion="settle" aria-hidden="true"></div>' +
       '<div class="board-motion" data-motion="active" aria-hidden="true"></div>' +
+      '</div>' +
+      '<div class="board-floor" aria-hidden="true"></div>' +
       '</div></div>'
     );
   }

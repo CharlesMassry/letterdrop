@@ -39,7 +39,30 @@
   };
   var SHAPE_IDS = ['I', 'L', 'J', 'O', 'T', 'S', 'Z'];
 
+  /** Real English words that use only roman-numeral letters (keep these). */
+  var ROMAN_LETTER_ALLOW = {
+    did: 1, ill: 1, dim: 1, mid: 1, mix: 1, lid: 1, mil: 1, vim: 1,
+    mill: 1, mild: 1, midi: 1, dill: 1, civil: 1, civic: 1, vivid: 1, mimic: 1,
+    livid: 1, lipid: 1,
+  };
+
+  function isJunkToken(word) {
+    if (!word || word.length < 3) return true;
+    // aaa / iii / ooo — repeated single letter
+    if (/^(.)\1+$/.test(word)) return true;
+    // Pure roman-numeral tokens (vii, viii, xii…) that aren't real English
+    if (
+      /^[ivxlcdm]+$/.test(word) &&
+      /^m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/.test(word) &&
+      !ROMAN_LETTER_ALLOW[word]
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   function wordSetHas(word) {
+    if (isJunkToken(word)) return false;
     return !!(window.LETTERDROP_WORD_SET && window.LETTERDROP_WORD_SET[word]);
   }
 

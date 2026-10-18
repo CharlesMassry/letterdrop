@@ -148,12 +148,11 @@
    */
   function readBoardMetrics(boardEl) {
     if (!boardEl) return null;
-    var stage = boardEl.querySelector('.board-stage') || boardEl;
     var layer = boardEl.querySelector('.board-fx');
     var cells = boardEl.querySelectorAll('.board-grid > .cell');
     if (!layer || cells.length < G.COLS + 1) return null;
-    // Position relative to the stage (same box as the grid), not the padded board chrome.
-    var originRect = stage.getBoundingClientRect();
+    // Position relative to the FX layer (may be inset from stage padding).
+    var originRect = layer.getBoundingClientRect();
     var a = cells[0].getBoundingClientRect();
     var right = cells[1].getBoundingClientRect();
     var below = cells[G.COLS].getBoundingClientRect();

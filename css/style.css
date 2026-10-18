@@ -301,21 +301,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  /* Never crop the board — tiles must stay fully visible. */
+  overflow: visible;
 }
 
 .board {
+  --cols: 8;
+  --rows: 12;
   --board-gap: clamp(2px, 0.4vw, 4px);
   --settle-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Radius on the chrome; pad must be ≥ radius so overflow:hidden never
-     chops corner/bottom tiles (pad < radius was the remaining clip bug). */
   --board-radius: clamp(0.55rem, 1.8vw, 1rem);
-  /* Gutter must clear the radius curve AND leave room below the last row
-     so subpixel grid rounding can't flush-crop tile bottoms. */
-  --board-pad: max(calc(var(--board-radius) + 6px), clamp(18px, 2.6vw, 28px));
+  --board-pad: clamp(10px, 1.6vw, 16px);
   position: relative;
   aspect-ratio: 8 / 12;
-  /* Fit remaining viewport slot without forcing overflow below */
   width: min(100cqw, calc(100cqh * 8 / 12));
   height: auto;
   max-height: 100cqh;
@@ -327,23 +325,24 @@ body {
   box-shadow:
     inset 0 0 40px rgba(0, 0, 0, 0.28),
     0 0 48px var(--glow);
-  /* Clip only true escapees; pad ≥ radius keeps tiles out of the curve. */
-  overflow: hidden;
+  /* Critical: do not clip letter faces. Radius is paint-only. */
+  overflow: visible;
   isolation: isolate;
 }
 
-/* Play field = grid + FX. Inner inset keeps the last row off the clip edge. */
+/* Play field: locked-letter grid + motion tiles sharing one box model. */
 .board-stage {
-  --stage-inset: 3px;
+  /* Track math lives here so 100% = stage (same box the grid fills). */
+  --tile-w: calc((100% - (var(--cols) - 1) * var(--board-gap)) / var(--cols));
+  --tile-h: calc((100% - (var(--rows) - 1) * var(--board-gap)) / var(--rows));
+  --step-x: calc(var(--tile-w) + var(--board-gap));
+  --step-y: calc(var(--tile-h) + var(--board-gap));
   position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  padding: var(--stage-inset);
-  box-sizing: border-box;
   overflow: visible;
-  border-radius: 0;
 }
 
 .board-grid {
@@ -357,18 +356,21 @@ body {
   overflow: visible;
 }
 
-.board-fx {
+.board-motion {
   position: absolute;
-  inset: var(--stage-inset);
+  inset: 0;
   pointer-events: none;
   z-index: 3;
   overflow: visible;
 }
 
-.fx-tile {
+/* Absolute tiles sized/stepped identically to grid tracks (no getBoundingClientRect). */
+.motion-tile {
   position: absolute;
-  left: 0;
-  top: 0;
+  left: calc(var(--c, 0) * var(--step-x));
+  top: calc(var(--r, 0) * var(--step-y));
+  width: var(--tile-w);
+  height: var(--tile-h);
   box-sizing: border-box;
   border-radius: 0.35rem;
   display: flex;
@@ -382,11 +384,11 @@ body {
   backface-visibility: hidden;
 }
 
-.fx-tile .cell-letter {
+.motion-tile .cell-letter {
   line-height: 1;
 }
 
-.fx-tile .cell-val {
+.motion-tile .cell-val {
   position: absolute;
   left: 2px;
   bottom: 1px;
@@ -397,14 +399,13 @@ body {
   pointer-events: none;
 }
 
-.fx-tile.fx-active {
+.motion-tile.motion-active {
   z-index: 5;
   background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
-  /* Inset glow — outer shadows were getting hard-cropped mid-tile. */
   box-shadow: inset 0 0 0 1px rgba(125, 255, 179, 0.35);
 }
 
-.fx-tile.fx-settle {
+.motion-tile.motion-settle {
   z-index: 4;
   background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2);
@@ -447,7 +448,7 @@ body {
   pointer-events: none;
 }
 
-.fx-tile.fx-active .cell-val {
+.motion-tile.motion-active .cell-val {
   color: rgba(6, 26, 22, 0.65);
 }
 

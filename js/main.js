@@ -24,8 +24,7 @@
   var boardMotionLock = null;
   /** @type {null|{startVisual:number,endRow:number,startTs:number,durationMs:number}} */
   var hardDropAnim = null;
-  var cachedMetrics = null;
-  var settleFxStarted = false;
+  var settleMotionStarted = false;
   var forceBoardRebuild = false;
   /** Classic Tetris soft-drop interval while ↓ is held. */
   var SOFT_DROP_MS = 42;
@@ -44,8 +43,7 @@
     }
     hardDropAnim = null;
     boardMotionLock = null;
-    settleFxStarted = false;
-    cachedMetrics = null;
+    settleMotionStarted = false;
     softDropHeld = false;
   }
 
@@ -74,7 +72,7 @@
       G.finishClearing(state);
       scheduleFeedbackClear();
       boardMotionLock = state.settling ? 'settling' : null;
-      settleFxStarted = false;
+      settleMotionStarted = false;
       markDirty(true);
     }, G.CLEAR_ANIM_MS);
   }
@@ -90,7 +88,7 @@
       if (!state.settling) return;
       G.finishSettling(state);
       boardMotionLock = state.clearing ? 'clearing' : null;
-      settleFxStarted = false;
+      settleMotionStarted = false;
       markDirty(true);
     }, ms);
   }
@@ -98,10 +96,7 @@
   /** @param {boolean=} forceBoard rebuild board even during motion lock (phase change) */
   function markDirty(forceBoard) {
     needsRender = true;
-    if (forceBoard) {
-      forceBoardRebuild = true;
-      cachedMetrics = null;
-    }
+    if (forceBoard) forceBoardRebuild = true;
     if (state.clearing) scheduleClearAnimation();
     if (state.settling) scheduleSettleAnimation();
   }
@@ -141,54 +136,6 @@
     return v;
   }
 
-  /**
-   * Derive track geometry from real grid cells relative to the FX layer.
-   * (Earlier bug: gap was read from `.board`, which has no gap — only `.board-grid`
-   * does — so stepX/Y ignored gaps and tiles drifted off-column.)
-   */
-  function readBoardMetrics(boardEl) {
-    if (!boardEl) return null;
-    var layer = boardEl.querySelector('.board-fx');
-    var cells = boardEl.querySelectorAll('.board-grid > .cell');
-    if (!layer || cells.length < G.COLS + 1) return null;
-    // Position relative to the FX layer (may be inset from stage padding).
-    var originRect = layer.getBoundingClientRect();
-    var a = cells[0].getBoundingClientRect();
-    var right = cells[1].getBoundingClientRect();
-    var below = cells[G.COLS].getBoundingClientRect();
-    var stepX = right.left - a.left;
-    var stepY = below.top - a.top;
-    if (!(stepX > 0) || !(stepY > 0)) return null;
-    return {
-      originX: a.left - originRect.left,
-      originY: a.top - originRect.top,
-      cellW: a.width,
-      cellH: a.height,
-      stepX: stepX,
-      stepY: stepY,
-    };
-  }
-
-  function getMetrics() {
-    var boardEl = app.querySelector('.board');
-    if (!boardEl) return null;
-    var w = boardEl.clientWidth;
-    var h = boardEl.clientHeight;
-    if (
-      cachedMetrics &&
-      cachedMetrics._w === w &&
-      cachedMetrics._h === h
-    ) {
-      return cachedMetrics;
-    }
-    cachedMetrics = readBoardMetrics(boardEl);
-    if (cachedMetrics) {
-      cachedMetrics._w = w;
-      cachedMetrics._h = h;
-    }
-    return cachedMetrics;
-  }
-
   function tileInner(letter) {
     return (
       '<span class="cell-letter">' +
@@ -199,31 +146,26 @@
     );
   }
 
-  function placeFx(el, row, col, metrics) {
-    // Keep FX tiles inside the last grid row (and first col…last col).
+  /**
+   * Place a motion tile on the same track math as the CSS grid (--tile-w/h, --step-*).
+   * Row may be fractional for smooth fall. Clamped so the tile face stays in-stage.
+   */
+  function placeMotionTile(el, row, col) {
     if (row > G.ROWS - 1) row = G.ROWS - 1;
     if (row < -4) row = -4;
     if (col < 0) col = 0;
     if (col > G.COLS - 1) col = G.COLS - 1;
-    el.style.width = metrics.cellW + 'px';
-    el.style.height = metrics.cellH + 'px';
-    el.style.transform =
-      'translate(' +
-      (metrics.originX + col * metrics.stepX) +
-      'px,' +
-      (metrics.originY + row * metrics.stepY) +
-      'px)';
+    el.style.setProperty('--r', String(row));
+    el.style.setProperty('--c', String(col));
   }
 
-  function syncActiveLayer() {
-    var layer = app.querySelector('[data-fx="active"]');
+  function syncActiveMotion() {
+    var layer = app.querySelector('[data-motion="active"]');
     if (!layer) return;
     if (!state.active || state.clearing || state.settling) {
       if (layer.childNodes.length) layer.innerHTML = '';
       return;
     }
-    var metrics = getMetrics();
-    if (!metrics) return;
     var cells = G.absoluteCells(state.active);
     var vRow = visualActiveRow();
     var baseRow = state.active.row;
@@ -233,7 +175,7 @@
       var html = '';
       for (i = 0; i < cells.length; i++) {
         html +=
-          '<div class="fx-tile fx-active" data-fx-i="' +
+          '<div class="motion-tile motion-active" data-motion-i="' +
           i +
           '">' +
           tileInner(cells[i].letter) +
@@ -254,22 +196,21 @@
 
     for (i = 0; i < cells.length; i++) {
       var fracRow = vRow + (cells[i].row - baseRow);
-      placeFx(layer.childNodes[i], fracRow, cells[i].col, metrics);
+      placeMotionTile(layer.childNodes[i], fracRow, cells[i].col);
     }
   }
 
-  function startSettleFx() {
-    if (settleFxStarted || !state.settling) return;
-    var layer = app.querySelector('[data-fx="settle"]');
-    var metrics = getMetrics();
-    if (!layer || !metrics) return;
-    settleFxStarted = true;
+  function startSettleMotion() {
+    if (settleMotionStarted || !state.settling) return;
+    var layer = app.querySelector('[data-motion="settle"]');
+    if (!layer) return;
+    settleMotionStarted = true;
     var moves = state.settling.moves;
     var html = '';
     var i;
     for (i = 0; i < moves.length; i++) {
       html +=
-        '<div class="fx-tile fx-settle" data-settle-i="' +
+        '<div class="motion-tile motion-settle" data-settle-i="' +
         i +
         '">' +
         tileInner(moves[i].letter) +
@@ -277,24 +218,27 @@
     }
     layer.innerHTML = html;
 
+    // Park each tile at its destination track, then pull it up with transform
+    // so the ease lands exactly on the grid cell (no pixel-metric drift).
     for (i = 0; i < moves.length; i++) {
       var el = layer.childNodes[i];
+      var dy = moves[i].fromRow - moves[i].toRow;
       el.style.transition = 'none';
-      placeFx(el, moves[i].fromRow, moves[i].col, metrics);
+      placeMotionTile(el, moves[i].toRow, moves[i].col);
+      el.style.transform =
+        'translateY(calc(' + dy + ' * (var(--tile-h) + var(--board-gap))))';
     }
 
-    // Double rAF so the browser commits the start transform before easing to the end.
     window.requestAnimationFrame(function () {
       window.requestAnimationFrame(function () {
         if (!state.settling || !layer) return;
-        var m2 = getMetrics() || metrics;
         for (var j = 0; j < moves.length; j++) {
           var tile = layer.childNodes[j];
           if (!tile) continue;
           var ms = moves[j].durationMs || state.settling.durationMs || 400;
           tile.style.transition =
             'transform ' + ms + 'ms var(--settle-ease, cubic-bezier(0.22, 1, 0.36, 1))';
-          placeFx(tile, moves[j].toRow, moves[j].col, m2);
+          tile.style.transform = 'translateY(0)';
         }
       });
     });
@@ -423,8 +367,8 @@
       '<div class="board-grid">' +
       cells.join('') +
       '</div>' +
-      '<div class="board-fx" data-fx="settle" aria-hidden="true"></div>' +
-      '<div class="board-fx" data-fx="active" aria-hidden="true"></div>' +
+      '<div class="board-motion" data-motion="settle" aria-hidden="true"></div>' +
+      '<div class="board-motion" data-motion="active" aria-hidden="true"></div>' +
       '</div></div>'
     );
   }
@@ -538,17 +482,16 @@
     } else {
       forceBoardRebuild = false;
       app.innerHTML = renderPlay();
-      cachedMetrics = null;
-      settleFxStarted = false;
+      settleMotionStarted = false;
       if (state.settling) {
         boardMotionLock = 'settling';
-        startSettleFx();
+        startSettleMotion();
       } else if (state.clearing) {
         boardMotionLock = 'clearing';
       } else {
         boardMotionLock = null;
       }
-      syncActiveLayer();
+      syncActiveMotion();
     }
     lastRenderedPhase = state.phase;
     needsRender = false;
@@ -641,13 +584,13 @@
     finishClearing: function () {
       G.finishClearing(state);
       boardMotionLock = state.settling ? 'settling' : null;
-      settleFxStarted = false;
+      settleMotionStarted = false;
       markDirty(true);
     },
     finishSettling: function () {
       G.finishSettling(state);
       boardMotionLock = state.clearing ? 'clearing' : null;
-      settleFxStarted = false;
+      settleMotionStarted = false;
       markDirty(true);
     },
   };
@@ -686,13 +629,13 @@
     if (action === 'left') {
       if (hardDropAnim) return;
       G.moveLeft(state);
-      syncActiveLayer();
+      syncActiveMotion();
       return;
     }
     if (action === 'right') {
       if (hardDropAnim) return;
       G.moveRight(state);
-      syncActiveLayer();
+      syncActiveMotion();
       return;
     }
     if (action === 'down') {
@@ -707,7 +650,7 @@
       if (hardDropAnim) return;
       G.rotate(state);
       dropAccum = Math.min(dropAccum, fallInterval() * 0.85);
-      syncActiveLayer();
+      syncActiveMotion();
       return;
     }
   });
@@ -730,13 +673,13 @@
         e.preventDefault();
         if (hardDropAnim) break;
         G.moveLeft(state);
-        syncActiveLayer();
+        syncActiveMotion();
         break;
       case 'ArrowRight':
         e.preventDefault();
         if (hardDropAnim) break;
         G.moveRight(state);
-        syncActiveLayer();
+        syncActiveMotion();
         break;
       case 'ArrowDown':
         e.preventDefault();
@@ -751,7 +694,7 @@
         if (hardDropAnim) break;
         G.rotate(state);
         dropAccum = Math.min(dropAccum, fallInterval() * 0.85);
-        syncActiveLayer();
+        syncActiveMotion();
         break;
       case ' ':
         e.preventDefault();
@@ -769,8 +712,7 @@
   });
 
   window.addEventListener('resize', function () {
-    cachedMetrics = null;
-    if (state.phase === 'playing') syncActiveLayer();
+    if (state.phase === 'playing') syncActiveMotion();
   });
 
   function processDropTicks() {
@@ -814,7 +756,7 @@
 
       if (state.phase !== prevPhase) markDirty(true);
 
-      if (state.settling && !settleFxStarted) startSettleFx();
+      if (state.settling && !settleMotionStarted) startSettleMotion();
     } else {
       lastTs = 0;
       dropAccum = 0;
@@ -822,7 +764,7 @@
 
     if (needsRender) render();
     else if (state.phase === 'playing' && lastRenderedPhase === 'playing') {
-      syncActiveLayer();
+      syncActiveMotion();
     }
 
     requestAnimationFrame(frame);

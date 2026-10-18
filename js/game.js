@@ -250,24 +250,28 @@
 
   /**
    * Remove cells and apply column gravity.
-   * Returns { removed, moves } where moves describe ONLY letters that actually
-   * changed row (fromRow !== toRow). Resting tiles are omitted so the UI can
-   * leave them put with no settle animation.
+   * ONLY columns that lost a cell in this clear are packed — overhang floaters
+   * in unrelated columns stay put (no board-wide cascade).
+   * Moves list includes ONLY letters whose row changed.
    */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];
     var moves = [];
     var toRemove = {};
+    var affectedCol = [];
     var i, r, c, key;
+    for (c = 0; c < COLS; c++) affectedCol[c] = false;
     for (i = 0; i < cells.length; i++) {
       key = cells[i].row + ',' + cells[i].col;
       toRemove[key] = true;
+      if (cells[i].col >= 0 && cells[i].col < COLS) affectedCol[cells[i].col] = true;
     }
     for (i = 0; i < cells.length; i++) {
       var letter = board[cells[i].row] && board[cells[i].row][cells[i].col];
       if (letter) removed.push(letter);
     }
     for (c = 0; c < COLS; c++) {
+      if (!affectedCol[c]) continue; // untouched columns: leave every tile where it is
       var stack = [];
       for (r = ROWS - 1; r >= 0; r--) {
         if (toRemove[r + ',' + c]) continue;

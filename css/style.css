@@ -312,8 +312,8 @@ body {
   --settle-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --board-radius: clamp(0.55rem, 1.8vw, 1rem);
   --board-pad: clamp(10px, 1.6vw, 16px);
-  /* Floor strip below the 12-row grid — clear gutter under the last row. */
-  --board-floor: clamp(20px, 4cqw, 32px);
+  /* Floor strip below the 12-row grid — substantial air under last-row tiles. */
+  --board-floor: clamp(28px, 5.5cqw, 40px);
   position: relative;
   aspect-ratio: 8 / 12;
   width: min(100cqw, calc(100cqh * 8 / 12));
@@ -338,7 +338,7 @@ body {
 .board-stage {
   display: flex;
   flex-direction: column;
-  gap: 6px; /* air between last row and floor line — rounded bottoms stay readable */
+  gap: 12px; /* air between last row and floor — keep rounded bottoms unmistakable */
   width: 100%;
   height: 100%;
   min-width: 0;

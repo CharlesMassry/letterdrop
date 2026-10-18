@@ -118,17 +118,27 @@
 
   function visualActiveRow() {
     if (!state.active) return 0;
+    var v;
     if (hardDropAnim) {
       var t = (performance.now() - hardDropAnim.startTs) / hardDropAnim.durationMs;
       if (t < 0) t = 0;
       if (t > 1) t = 1;
       var eased = 1 - Math.pow(1 - t, 3);
-      return (
+      v =
         hardDropAnim.startVisual +
-        (hardDropAnim.endRow - hardDropAnim.startVisual) * eased
-      );
+        (hardDropAnim.endRow - hardDropAnim.startVisual) * eased;
+    } else {
+      v = state.active.row + dropFrac();
     }
-    return state.active.row + dropFrac();
+    // Clamp so the lowest cell of the piece never paints past the bottom row.
+    var maxDr = 0;
+    for (var i = 0; i < state.active.cells.length; i++) {
+      if (state.active.cells[i].dr > maxDr) maxDr = state.active.cells[i].dr;
+    }
+    var maxOrigin = G.ROWS - 1 - maxDr;
+    if (v > maxOrigin) v = maxOrigin;
+    if (v < -4) v = -4;
+    return v;
   }
 
   /**
@@ -189,6 +199,11 @@
   }
 
   function placeFx(el, row, col, metrics) {
+    // Keep FX tiles inside the last grid row (and first col…last col).
+    if (row > G.ROWS - 1) row = G.ROWS - 1;
+    if (row < -4) row = -4;
+    if (col < 0) col = 0;
+    if (col > G.COLS - 1) col = G.COLS - 1;
     el.style.width = metrics.cellW + 'px';
     el.style.height = metrics.cellH + 'px';
     el.style.transform =

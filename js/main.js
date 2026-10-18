@@ -71,9 +71,10 @@
       if (!state.clearing) return;
       G.finishClearing(state);
       scheduleFeedbackClear();
-      boardMotionLock = state.settling ? 'settling' : null;
       settleMotionStarted = false;
-      markDirty(true);
+      // In-place patch — do NOT rebuild the whole board (that made every tile pop/settle).
+      patchHudChrome();
+      patchBoardAfterClear();
     }, G.CLEAR_ANIM_MS);
   }
 
@@ -87,9 +88,9 @@
       settleAnimTimer = null;
       if (!state.settling) return;
       G.finishSettling(state);
-      boardMotionLock = state.clearing ? 'clearing' : null;
       settleMotionStarted = false;
-      markDirty(true);
+      patchHudChrome();
+      patchBoardAfterSettle();
     }, ms);
   }
 
@@ -327,6 +328,155 @@
       keys[m.toRow + ',' + m.col] = true;
     }
     return keys;
+  }
+
+  function gridCellAt(row, col) {
+    var grid = app.querySelector('.board-grid');
+    if (!grid) return null;
+    return grid.children[row * G.COLS + col] || null;
+  }
+
+  function emptyGridCell(el) {
+    if (!el) return;
+    el.className = 'cell';
+    el.innerHTML = '';
+    el.setAttribute('aria-label', 'Empty');
+  }
+
+  function fillGridCell(el, letter) {
+    if (!el || !letter) return;
+    var current = el.querySelector('.cell-letter');
+    if (
+      el.classList.contains('filled') &&
+      !el.classList.contains('disintegrating') &&
+      current &&
+      current.textContent === letter
+    ) {
+      return; // already correct — leave the node alone
+    }
+    el.className = 'cell filled';
+    el.innerHTML = tileInner(letter);
+    el.setAttribute(
+      'aria-label',
+      'Letter ' + letter + ', ' + G.letterValue(letter) + ' points'
+    );
+  }
+
+  function paintClearingCells() {
+    if (!state.clearing) return;
+    var cells = state.clearing.cells;
+    for (var i = 0; i < cells.length; i++) {
+      var el = gridCellAt(cells[i].row, cells[i].col);
+      if (!el) continue;
+      var letter = cells[i].letter;
+      el.className = 'cell filled disintegrating';
+      el.innerHTML = tileInner(letter) + shardMarkup();
+      el.setAttribute(
+        'aria-label',
+        'Letter ' + letter + ', ' + G.letterValue(letter) + ' points'
+      );
+    }
+  }
+
+  /**
+   * After gravity: only vacate cleared cells and tiles that actually fell.
+   * Resting tiles keep their existing DOM nodes (no settle animation, no rebuild).
+   */
+  function patchBoardAfterClear() {
+    var grid = app.querySelector('.board-grid');
+    if (!grid || grid.children.length !== G.ROWS * G.COLS) {
+      markDirty(true);
+      return;
+    }
+
+    var moveFrom = {};
+    var moveTo = {};
+    var moves = state.settling ? state.settling.moves : [];
+    var i;
+    for (i = 0; i < moves.length; i++) {
+      moveFrom[moves[i].fromRow + ',' + moves[i].col] = true;
+      moveTo[moves[i].toRow + ',' + moves[i].col] = true;
+    }
+
+    var r, c, key, el, letter;
+    for (r = 0; r < G.ROWS; r++) {
+      for (c = 0; c < G.COLS; c++) {
+        key = r + ',' + c;
+        el = grid.children[r * G.COLS + c];
+        letter = state.board[r][c];
+        if (moveTo[key] || moveFrom[key]) {
+          emptyGridCell(el);
+          continue;
+        }
+        if (!letter) {
+          emptyGridCell(el);
+          continue;
+        }
+        // Unaffected resting tile — keep the live DOM node.
+        fillGridCell(el, letter);
+      }
+    }
+
+    var settleLayer = app.querySelector('[data-motion="settle"]');
+    if (settleLayer) settleLayer.innerHTML = '';
+    var activeLayer = app.querySelector('[data-motion="active"]');
+    if (activeLayer) activeLayer.innerHTML = '';
+
+    if (state.settling && moves.length) {
+      boardMotionLock = 'settling';
+      settleMotionStarted = false;
+      startSettleMotion();
+      scheduleSettleAnimation();
+    } else if (state.clearing) {
+      boardMotionLock = 'clearing';
+      paintClearingCells();
+      scheduleClearAnimation();
+    } else {
+      boardMotionLock = null;
+      syncActiveMotion();
+    }
+  }
+
+  /** After cascade: land only the tiles that fell; leave everyone else untouched. */
+  function patchBoardAfterSettle() {
+    var grid = app.querySelector('.board-grid');
+    if (!grid || grid.children.length !== G.ROWS * G.COLS) {
+      markDirty(true);
+      return;
+    }
+
+    var settleLayer = app.querySelector('[data-motion="settle"]');
+    if (settleLayer) settleLayer.innerHTML = '';
+
+    // finishSettling already cleared state.settling — land letters from the board.
+    var r, c, el, letter;
+    for (r = 0; r < G.ROWS; r++) {
+      for (c = 0; c < G.COLS; c++) {
+        el = grid.children[r * G.COLS + c];
+        letter = state.board[r][c];
+        if (!letter) {
+          if (el.classList.contains('filled') || el.classList.contains('disintegrating')) {
+            emptyGridCell(el);
+          }
+          continue;
+        }
+        fillGridCell(el, letter);
+      }
+    }
+
+    if (state.clearing) {
+      boardMotionLock = 'clearing';
+      paintClearingCells();
+      scheduleClearAnimation();
+    } else if (state.settling) {
+      boardMotionLock = 'settling';
+      settleMotionStarted = false;
+      startSettleMotion();
+      scheduleSettleAnimation();
+    } else {
+      boardMotionLock = null;
+      syncActiveMotion();
+    }
   }
 
   function renderBoard() {
@@ -586,15 +736,15 @@
     },
     finishClearing: function () {
       G.finishClearing(state);
-      boardMotionLock = state.settling ? 'settling' : null;
       settleMotionStarted = false;
-      markDirty(true);
+      patchHudChrome();
+      patchBoardAfterClear();
     },
     finishSettling: function () {
       G.finishSettling(state);
-      boardMotionLock = state.clearing ? 'clearing' : null;
       settleMotionStarted = false;
-      markDirty(true);
+      patchHudChrome();
+      patchBoardAfterSettle();
     },
   };
 

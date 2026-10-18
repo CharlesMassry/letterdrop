@@ -250,8 +250,9 @@
 
   /**
    * Remove cells and apply column gravity.
-   * Returns { removed, moves } where moves describe each letter that fell
-   * (for eased cascade animation). Logical positions stay on the integer grid.
+   * Returns { removed, moves } where moves describe ONLY letters that actually
+   * changed row (fromRow !== toRow). Resting tiles are omitted so the UI can
+   * leave them put with no settle animation.
    */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];

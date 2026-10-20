@@ -172,6 +172,7 @@
     var baseRow = state.active.row;
     var i;
 
+    var neon = state.active.neon || null;
     if (layer.childNodes.length !== cells.length) {
       var html = '';
       for (i = 0; i < cells.length; i++) {
@@ -196,8 +197,14 @@
     }
 
     for (i = 0; i < cells.length; i++) {
+      var tile = layer.childNodes[i];
       var fracRow = vRow + (cells[i].row - baseRow);
-      placeMotionTile(layer.childNodes[i], fracRow, cells[i].col);
+      placeMotionTile(tile, fracRow, cells[i].col);
+      if (neon) {
+        tile.style.setProperty('--neon-hi', neon.hi);
+        tile.style.setProperty('--neon-lo', neon.lo);
+        tile.style.setProperty('--neon-glow', neon.glow);
+      }
     }
   }
 
@@ -226,6 +233,7 @@
       var dy = moves[i].fromRow - moves[i].toRow;
       el.style.transition = 'none';
       placeMotionTile(el, moves[i].toRow, moves[i].col);
+      applyNeonVars(el, moves[i].neon);
       el.style.transform =
         'translateY(calc(' + dy + ' * (var(--tile-h) + var(--board-gap))))';
     }
@@ -336,30 +344,46 @@
     return grid.children[row * G.COLS + col] || null;
   }
 
+  function applyNeonVars(el, neon) {
+    if (!el) return;
+    if (neon && neon.hi) {
+      el.style.setProperty('--neon-hi', neon.hi);
+      el.style.setProperty('--neon-lo', neon.lo);
+      el.style.setProperty('--neon-glow', neon.glow);
+    } else {
+      el.style.removeProperty('--neon-hi');
+      el.style.removeProperty('--neon-lo');
+      el.style.removeProperty('--neon-glow');
+    }
+  }
+
   function emptyGridCell(el) {
     if (!el) return;
     el.className = 'cell';
     el.innerHTML = '';
+    el.removeAttribute('style');
     el.setAttribute('aria-label', 'Empty');
   }
 
-  function fillGridCell(el, letter) {
+  function fillGridCell(el, letter, neon) {
     if (!el || !letter) return;
     var current = el.querySelector('.cell-letter');
-    if (
+    var sameLetter =
       el.classList.contains('filled') &&
       !el.classList.contains('disintegrating') &&
       current &&
-      current.textContent === letter
-    ) {
-      return; // already correct — leave the node alone
+      current.textContent === letter;
+    if (!sameLetter) {
+      el.className = 'cell filled';
+      el.innerHTML = tileInner(letter);
+      el.setAttribute(
+        'aria-label',
+        'Letter ' + letter + ', ' + G.letterValue(letter) + ' points'
+      );
+    } else {
+      el.className = 'cell filled';
     }
-    el.className = 'cell filled';
-    el.innerHTML = tileInner(letter);
-    el.setAttribute(
-      'aria-label',
-      'Letter ' + letter + ', ' + G.letterValue(letter) + ' points'
-    );
+    applyNeonVars(el, neon);
   }
 
   function paintClearingCells() {
@@ -371,6 +395,7 @@
       var letter = cells[i].letter;
       el.className = 'cell filled disintegrating';
       el.innerHTML = tileInner(letter) + shardMarkup();
+      applyNeonVars(el, cells[i].neon);
       el.setAttribute(
         'aria-label',
         'Letter ' + letter + ', ' + G.letterValue(letter) + ' points'
@@ -398,12 +423,13 @@
       moveTo[moves[i].toRow + ',' + moves[i].col] = true;
     }
 
-    var r, c, key, el, letter;
+    var r, c, key, el, cell, letter;
     for (r = 0; r < G.ROWS; r++) {
       for (c = 0; c < G.COLS; c++) {
         key = r + ',' + c;
         el = grid.children[r * G.COLS + c];
-        letter = state.board[r][c];
+        cell = state.board[r][c];
+        letter = G.tileLetter(cell);
         if (moveTo[key] || moveFrom[key]) {
           emptyGridCell(el);
           continue;
@@ -412,8 +438,8 @@
           emptyGridCell(el);
           continue;
         }
-        // Unaffected resting tile — keep the live DOM node.
-        fillGridCell(el, letter);
+        // Unaffected resting tile — keep the live DOM node + neon.
+        fillGridCell(el, letter, G.tileNeon(cell));
       }
     }
 
@@ -449,18 +475,19 @@
     if (settleLayer) settleLayer.innerHTML = '';
 
     // finishSettling already cleared state.settling — land letters from the board.
-    var r, c, el, letter;
+    var r, c, el, cell, letter;
     for (r = 0; r < G.ROWS; r++) {
       for (c = 0; c < G.COLS; c++) {
         el = grid.children[r * G.COLS + c];
-        letter = state.board[r][c];
+        cell = state.board[r][c];
+        letter = G.tileLetter(cell);
         if (!letter) {
           if (el.classList.contains('filled') || el.classList.contains('disintegrating')) {
             emptyGridCell(el);
           }
           continue;
         }
-        fillGridCell(el, letter);
+        fillGridCell(el, letter, G.tileNeon(cell));
       }
     }
 
@@ -479,21 +506,42 @@
     }
   }
 
+  function neonStyleAttr(neon) {
+    if (!neon || !neon.hi) return '';
+    return (
+      ' style="--neon-hi:' +
+      neon.hi +
+      ';--neon-lo:' +
+      neon.lo +
+      ';--neon-glow:' +
+      neon.glow +
+      '"'
+    );
+  }
+
   function renderBoard() {
     var clearing = G.clearingKeySet(state);
     var hideSettling = settleDestKeys();
+    var clearingMeta = state.clearing ? state.clearing.cells : [];
+    var clearingNeon = {};
+    var ci;
+    for (ci = 0; ci < clearingMeta.length; ci++) {
+      clearingNeon[clearingMeta[ci].row + ',' + clearingMeta[ci].col] =
+        clearingMeta[ci].neon || null;
+    }
     var cells = [];
     for (var r = 0; r < G.ROWS; r++) {
       for (var c = 0; c < G.COLS; c++) {
         var key = r + ',' + c;
         var clearingLetter = clearing[key];
-        var boarded =
-          clearingLetter ||
-          (hideSettling[key] ? null : state.board[r][c]);
-        var letter = clearingLetter || boarded || '';
+        var boardedCell = hideSettling[key] ? null : state.board[r][c];
+        var letter = clearingLetter || G.tileLetter(boardedCell) || '';
+        var neon = clearingLetter
+          ? clearingNeon[key]
+          : G.tileNeon(boardedCell);
         var classes = ['cell'];
         if (clearingLetter) classes.push('filled', 'disintegrating');
-        else if (boarded) classes.push('filled');
+        else if (letter) classes.push('filled');
         var val =
           letter
             ? '<span class="cell-val">' + G.letterValue(letter) + '</span>'
@@ -501,7 +549,9 @@
         cells.push(
           '<div class="' +
             classes.join(' ') +
-            '" role="gridcell" aria-label="' +
+            '"' +
+            neonStyleAttr(neon) +
+            ' role="gridcell" aria-label="' +
             (letter ? 'Letter ' + letter + ', ' + G.letterValue(letter) + ' points' : 'Empty') +
             '">' +
             (letter ? '<span class="cell-letter">' + letter + '</span>' : '') +

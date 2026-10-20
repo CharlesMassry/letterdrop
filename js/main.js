@@ -271,7 +271,7 @@
       '</h1>' +
       '<p class="tagline">Falling letter blocks. Rising words. Stack until the board fills — spell your way up.</p>' +
       '<ul class="howto">' +
-      '<li><strong>← → ↓</strong> move · <strong>↑ / X</strong> rotate · <strong>Space</strong> hard drop</li>' +
+      '<li><strong>← → ↓</strong> move · <strong>↑ / X</strong> rotate · <strong>Space</strong> hard drop · <strong>0.5s</strong> slide after landing</li>' +
       '<li><strong>Line up</strong> a dictionary word in a row or column — it scores when the piece lands</li>' +
       '<li>Seven tetromino shapes — each cell carries a letter</li>' +
       '</ul>' +

@@ -297,24 +297,27 @@
    *
    * - Grounded = reachable from any bottom-row tile through 4-connected tiles.
    *   Overhangs that are still part of that structure stay put (no column pack).
-   * - Unattached tiles fall down their column until they rest on the floor or
-   *   another tile. Only tiles whose row changes are listed in moves (for UI).
+   * - Floating tiles form 4-connected components; each component drops as a
+   *   rigid unit (same fall distance, shape preserved). Fall distance is the
+   *   minimum clearance under any member of the group.
    * Neon travels with each tile object.
    */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];
     var moves = [];
-    var toRemove = {};
-    var i, r, c, key;
-    for (i = 0; i < cells.length; i++) {
-      key = cells[i].row + ',' + cells[i].col;
-      toRemove[key] = true;
-    }
+    var i, r, c, key, nr, nc;
     for (i = 0; i < cells.length; i++) {
       var gone = board[cells[i].row] && board[cells[i].row][cells[i].col];
       if (gone) removed.push(tileLetter(gone));
       board[cells[i].row][cells[i].col] = null;
     }
+
+    var dirs = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ];
 
     // Mark every tile attached (4-connected) to the floor.
     var grounded = {};
@@ -327,17 +330,11 @@
         queue.push({ row: ROWS - 1, col: c });
       }
     }
-    var dirs = [
-      [-1, 0],
-      [1, 0],
-      [0, -1],
-      [0, 1],
-    ];
     while (qh < queue.length) {
       var cur = queue[qh++];
       for (i = 0; i < dirs.length; i++) {
-        var nr = cur.row + dirs[i][0];
-        var nc = cur.col + dirs[i][1];
+        nr = cur.row + dirs[i][0];
+        nc = cur.col + dirs[i][1];
         if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
         if (!board[nr][nc]) continue;
         key = nr + ',' + nc;
@@ -347,37 +344,83 @@
       }
     }
 
-    // Lift unattached tiles, then drop them bottom-first onto support.
+    // Lift unattached tiles, then drop each 4-connected floater group rigidly.
     var floaters = [];
+    var floaterAt = {};
     for (r = 0; r < ROWS; r++) {
       for (c = 0; c < COLS; c++) {
         if (!board[r][c]) continue;
         key = r + ',' + c;
         if (grounded[key]) continue;
+        floaterAt[key] = floaters.length;
         floaters.push({ tile: board[r][c], fromRow: r, col: c });
         board[r][c] = null;
       }
     }
-    floaters.sort(function (a, b) {
-      if (b.fromRow !== a.fromRow) return b.fromRow - a.fromRow;
-      return a.col - b.col;
+
+    var visited = {};
+    var groups = [];
+    for (i = 0; i < floaters.length; i++) {
+      if (visited[i]) continue;
+      var group = [];
+      var gq = [i];
+      var gi = 0;
+      visited[i] = true;
+      while (gi < gq.length) {
+        var idx = gq[gi++];
+        group.push(floaters[idx]);
+        var fr = floaters[idx].fromRow;
+        var fc = floaters[idx].col;
+        for (var d = 0; d < dirs.length; d++) {
+          nr = fr + dirs[d][0];
+          nc = fc + dirs[d][1];
+          key = nr + ',' + nc;
+          var nIdx = floaterAt[key];
+          if (nIdx === undefined || visited[nIdx]) continue;
+          visited[nIdx] = true;
+          gq.push(nIdx);
+        }
+      }
+      groups.push(group);
+    }
+
+    // Lower groups land first so upper islands can rest on them.
+    groups.sort(function (a, b) {
+      var maxA = a[0].fromRow;
+      var maxB = b[0].fromRow;
+      for (i = 1; i < a.length; i++) if (a[i].fromRow > maxA) maxA = a[i].fromRow;
+      for (i = 1; i < b.length; i++) if (b[i].fromRow > maxB) maxB = b[i].fromRow;
+      return maxB - maxA;
     });
 
-    for (i = 0; i < floaters.length; i++) {
-      var f = floaters[i];
-      var toRow = f.fromRow;
-      while (toRow + 1 < ROWS && !board[toRow + 1][f.col]) toRow += 1;
-      board[toRow][f.col] = f.tile;
-      if (toRow !== f.fromRow) {
-        var fall = toRow - f.fromRow;
-        moves.push({
-          letter: tileLetter(f.tile),
-          neon: tileNeon(f.tile),
-          col: f.col,
-          fromRow: f.fromRow,
-          toRow: toRow,
-          durationMs: settleDurationForFall(fall),
-        });
+    for (var g = 0; g < groups.length; g++) {
+      group = groups[g];
+      var fall = ROWS;
+      for (i = 0; i < group.length; i++) {
+        var room = 0;
+        var probe = group[i].fromRow + 1;
+        while (probe < ROWS && !board[probe][group[i].col]) {
+          room += 1;
+          probe += 1;
+        }
+        if (room < fall) fall = room;
+      }
+      if (fall === ROWS) fall = 0;
+      var durationMs = settleDurationForFall(fall);
+      for (i = 0; i < group.length; i++) {
+        var f = group[i];
+        var toRow = f.fromRow + fall;
+        board[toRow][f.col] = f.tile;
+        if (fall > 0) {
+          moves.push({
+            letter: tileLetter(f.tile),
+            neon: tileNeon(f.tile),
+            col: f.col,
+            fromRow: f.fromRow,
+            toRow: toRow,
+            durationMs: durationMs,
+          });
+        }
       }
     }
 

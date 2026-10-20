@@ -578,14 +578,6 @@
 
   function renderFoundWords() {
     var list = state.foundWords || [];
-    if (!list.length) {
-      return (
-        '<div class="found-words empty" data-hud="found" aria-live="polite">' +
-        '<span class="found-label">Words</span>' +
-        '<span class="found-empty">None yet</span>' +
-        '</div>'
-      );
-    }
     var items = '';
     for (var i = 0; i < list.length; i++) {
       items +=
@@ -595,12 +587,15 @@
         list[i].points +
         '</span></li>';
     }
+    // Same outer structure empty or filled so HUD patches don't reflow the board.
     return (
-      '<div class="found-words" data-hud="found" aria-live="polite">' +
+      '<div class="found-words' +
+      (list.length ? '' : ' empty') +
+      '" data-hud="found" aria-live="polite">' +
       '<span class="found-label">Words</span>' +
-      '<ul>' +
-      items +
-      '</ul>' +
+      (list.length
+        ? '<ul>' + items + '</ul>'
+        : '<span class="found-empty">None yet</span>') +
       '</div>'
     );
   }

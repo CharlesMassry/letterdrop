@@ -128,13 +128,55 @@
     return out;
   }
 
+  /** Neon faces for the active falling piece — one random pick per tetromino. */
+  var NEON_PALETTE = [
+    { hi: '#ff5ec8', lo: '#ff2a9e', glow: 'rgba(255, 94, 200, 0.55)' }, // hot pink
+    { hi: '#5ce1ff', lo: '#00b8e6', glow: 'rgba(92, 225, 255, 0.55)' }, // cyan
+    { hi: '#b8ff3c', lo: '#7aef00', glow: 'rgba(184, 255, 60, 0.5)' }, // lime
+    { hi: '#c77dff', lo: '#9b4dff', glow: 'rgba(199, 125, 255, 0.55)' }, // violet
+    { hi: '#ff9f43', lo: '#ff6b00', glow: 'rgba(255, 159, 67, 0.55)' }, // orange
+    { hi: '#4dffa6', lo: '#00e676', glow: 'rgba(77, 255, 166, 0.5)' }, // mint
+    { hi: '#ffe566', lo: '#ffd000', glow: 'rgba(255, 229, 102, 0.55)' }, // electric yellow
+    { hi: '#ff6b6b', lo: '#ff3344', glow: 'rgba(255, 107, 107, 0.55)' }, // coral red
+  ];
+
+  function randomNeon() {
+    return NEON_PALETTE[Math.floor(Math.random() * NEON_PALETTE.length)];
+  }
+
+  /** Board cells are null or { letter, neon }. Accept legacy bare strings. */
+  function tileLetter(cell) {
+    if (!cell) return null;
+    if (typeof cell === 'string') return cell;
+    return cell.letter || null;
+  }
+
+  function tileNeon(cell) {
+    if (!cell || typeof cell === 'string') return null;
+    return cell.neon || null;
+  }
+
+  function makeTile(letter, neon) {
+    return {
+      letter: String(letter).toUpperCase(),
+      neon: neon || randomNeon(),
+    };
+  }
+
   function createPiece(shape, row, col) {
     var offsets = SHAPES[shape];
     var cells = [];
+    var neon = randomNeon();
     for (var i = 0; i < offsets.length; i++) {
       cells.push({ dr: offsets[i][0], dc: offsets[i][1], letter: randomLetter() });
     }
-    return { shape: shape, row: row, col: col, cells: normalizeCells(cells) };
+    return {
+      shape: shape,
+      row: row,
+      col: col,
+      cells: normalizeCells(cells),
+      neon: neon,
+    };
   }
 
   function createEmptyBoard() {
@@ -170,10 +212,11 @@
 
   function lockPiece(board, piece) {
     var abs = absoluteCells(piece);
+    var neon = piece.neon || randomNeon();
     for (var i = 0; i < abs.length; i++) {
       var a = abs[i];
       if (a.row >= 0 && a.row < ROWS && a.col >= 0 && a.col < COLS) {
-        board[a.row][a.col] = a.letter;
+        board[a.row][a.col] = makeTile(a.letter, neon);
       }
     }
   }
@@ -249,50 +292,138 @@
   }
 
   /**
-   * Remove cells and apply column gravity.
-   * ONLY columns that lost a cell in this clear are packed — overhang floaters
-   * in unrelated columns stay put (no board-wide cascade).
-   * Moves list includes ONLY letters whose row changed.
+   * Remove cleared cells, then settle only tiles that are not attached to the
+   * floor via an orthogonally connected grounded structure.
+   *
+   * - Grounded = reachable from any bottom-row tile through 4-connected tiles.
+   *   Overhangs that are still part of that structure stay put (no column pack).
+   * - Floating tiles form 4-connected components; each component drops as a
+   *   rigid unit (same fall distance, shape preserved). Fall distance is the
+   *   minimum clearance under any member of the group.
+   * Neon travels with each tile object.
    */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];
     var moves = [];
-    var toRemove = {};
-    var affectedCol = [];
-    var i, r, c, key;
-    for (c = 0; c < COLS; c++) affectedCol[c] = false;
+    var i, r, c, key, nr, nc;
     for (i = 0; i < cells.length; i++) {
-      key = cells[i].row + ',' + cells[i].col;
-      toRemove[key] = true;
-      if (cells[i].col >= 0 && cells[i].col < COLS) affectedCol[cells[i].col] = true;
+      var gone = board[cells[i].row] && board[cells[i].row][cells[i].col];
+      if (gone) removed.push(tileLetter(gone));
+      board[cells[i].row][cells[i].col] = null;
     }
-    for (i = 0; i < cells.length; i++) {
-      var letter = board[cells[i].row] && board[cells[i].row][cells[i].col];
-      if (letter) removed.push(letter);
-    }
+
+    var dirs = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ];
+
+    // Mark every tile attached (4-connected) to the floor.
+    var grounded = {};
+    var queue = [];
+    var qh = 0;
     for (c = 0; c < COLS; c++) {
-      if (!affectedCol[c]) continue; // untouched columns: leave every tile where it is
-      var stack = [];
-      for (r = ROWS - 1; r >= 0; r--) {
-        if (toRemove[r + ',' + c]) continue;
-        if (board[r][c]) stack.push({ letter: board[r][c], fromRow: r });
+      if (board[ROWS - 1][c]) {
+        key = ROWS - 1 + ',' + c;
+        grounded[key] = true;
+        queue.push({ row: ROWS - 1, col: c });
       }
-      for (r = 0; r < ROWS; r++) board[r][c] = null;
-      for (i = 0; i < stack.length; i++) {
-        var toRow = ROWS - 1 - i;
-        board[toRow][c] = stack[i].letter;
-        if (stack[i].fromRow !== toRow) {
-          var fall = toRow - stack[i].fromRow;
+    }
+    while (qh < queue.length) {
+      var cur = queue[qh++];
+      for (i = 0; i < dirs.length; i++) {
+        nr = cur.row + dirs[i][0];
+        nc = cur.col + dirs[i][1];
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+        if (!board[nr][nc]) continue;
+        key = nr + ',' + nc;
+        if (grounded[key]) continue;
+        grounded[key] = true;
+        queue.push({ row: nr, col: nc });
+      }
+    }
+
+    // Lift unattached tiles, then drop each 4-connected floater group rigidly.
+    var floaters = [];
+    var floaterAt = {};
+    for (r = 0; r < ROWS; r++) {
+      for (c = 0; c < COLS; c++) {
+        if (!board[r][c]) continue;
+        key = r + ',' + c;
+        if (grounded[key]) continue;
+        floaterAt[key] = floaters.length;
+        floaters.push({ tile: board[r][c], fromRow: r, col: c });
+        board[r][c] = null;
+      }
+    }
+
+    var visited = {};
+    var groups = [];
+    for (i = 0; i < floaters.length; i++) {
+      if (visited[i]) continue;
+      var group = [];
+      var gq = [i];
+      var gi = 0;
+      visited[i] = true;
+      while (gi < gq.length) {
+        var idx = gq[gi++];
+        group.push(floaters[idx]);
+        var fr = floaters[idx].fromRow;
+        var fc = floaters[idx].col;
+        for (var d = 0; d < dirs.length; d++) {
+          nr = fr + dirs[d][0];
+          nc = fc + dirs[d][1];
+          key = nr + ',' + nc;
+          var nIdx = floaterAt[key];
+          if (nIdx === undefined || visited[nIdx]) continue;
+          visited[nIdx] = true;
+          gq.push(nIdx);
+        }
+      }
+      groups.push(group);
+    }
+
+    // Lower groups land first so upper islands can rest on them.
+    groups.sort(function (a, b) {
+      var maxA = a[0].fromRow;
+      var maxB = b[0].fromRow;
+      for (i = 1; i < a.length; i++) if (a[i].fromRow > maxA) maxA = a[i].fromRow;
+      for (i = 1; i < b.length; i++) if (b[i].fromRow > maxB) maxB = b[i].fromRow;
+      return maxB - maxA;
+    });
+
+    for (var g = 0; g < groups.length; g++) {
+      group = groups[g];
+      var fall = ROWS;
+      for (i = 0; i < group.length; i++) {
+        var room = 0;
+        var probe = group[i].fromRow + 1;
+        while (probe < ROWS && !board[probe][group[i].col]) {
+          room += 1;
+          probe += 1;
+        }
+        if (room < fall) fall = room;
+      }
+      if (fall === ROWS) fall = 0;
+      var durationMs = settleDurationForFall(fall);
+      for (i = 0; i < group.length; i++) {
+        var f = group[i];
+        var toRow = f.fromRow + fall;
+        board[toRow][f.col] = f.tile;
+        if (fall > 0) {
           moves.push({
-            letter: stack[i].letter,
-            col: c,
-            fromRow: stack[i].fromRow,
+            letter: tileLetter(f.tile),
+            neon: tileNeon(f.tile),
+            col: f.col,
+            fromRow: f.fromRow,
             toRow: toRow,
-            durationMs: settleDurationForFall(fall),
+            durationMs: durationMs,
           });
         }
       }
     }
+
     return { removed: removed, moves: moves };
   }
 
@@ -347,7 +478,7 @@
     for (r = 0; r < ROWS; r++) {
       run = [];
       for (c = 0; c <= COLS; c++) {
-        var hLetter = c < COLS ? board[r][c] : null;
+        var hLetter = c < COLS ? tileLetter(board[r][c]) : null;
         if (hLetter) run.push({ row: r, col: c, letter: hLetter });
         else if (run.length) {
           considerRun(run);
@@ -358,7 +489,7 @@
     for (c = 0; c < COLS; c++) {
       run = [];
       for (r = 0; r <= ROWS; r++) {
-        var vLetter = r < ROWS ? board[r][c] : null;
+        var vLetter = r < ROWS ? tileLetter(board[r][c]) : null;
         if (vLetter) run.push({ row: r, col: c, letter: vLetter });
         else if (run.length) {
           considerRun(run);
@@ -472,8 +603,16 @@
     for (i = 0; i < cells.length; i++) {
       var row = cells[i].row;
       var col = cells[i].col;
-      var letter = state.board[row] && state.board[row][col];
-      if (letter) snapshot.push({ row: row, col: col, letter: letter });
+      var cell = state.board[row] && state.board[row][col];
+      var letter = tileLetter(cell);
+      if (letter) {
+        snapshot.push({
+          row: row,
+          col: col,
+          letter: letter,
+          neon: tileNeon(cell),
+        });
+      }
     }
     if (snapshot.length === 0) return false;
 
@@ -644,9 +783,15 @@
     findLinedUpWords: findLinedUpWords,
     isDictionaryWord: isDictionaryWord,
     activeCellMap: activeCellMap,
+    tileLetter: tileLetter,
+    tileNeon: tileNeon,
+    makeTile: makeTile,
     plant: function (state, cells) {
       for (var i = 0; i < cells.length; i++) {
-        state.board[cells[i].row][cells[i].col] = String(cells[i].letter).toUpperCase();
+        state.board[cells[i].row][cells[i].col] = makeTile(
+          cells[i].letter,
+          cells[i].neon || null
+        );
       }
     },
   };

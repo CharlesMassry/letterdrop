@@ -428,15 +428,26 @@ body {
 
 .motion-tile.motion-active {
   z-index: 5;
-  background: linear-gradient(145deg, #9bffc4 0%, #5ee89a 100%);
-  box-shadow: inset 0 0 0 1px rgba(125, 255, 179, 0.35);
+  /* Per-piece neon from JS (--neon-hi / --neon-lo / --neon-glow). */
+  --neon-hi: #9bffc4;
+  --neon-lo: #5ee89a;
+  --neon-glow: rgba(125, 255, 179, 0.45);
+  background: linear-gradient(145deg, var(--neon-hi) 0%, var(--neon-lo) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 0 14px var(--neon-glow);
 }
 
 .motion-tile.motion-settle {
   z-index: 4;
-  background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
-  /* Soft face shade — a hard inset bottom edge read as a crop line. */
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  /* Keep each tile's neon while cascading. */
+  --neon-hi: #ffe566;
+  --neon-lo: #f0c42e;
+  --neon-glow: rgba(255, 229, 102, 0.35);
+  background: linear-gradient(145deg, var(--neon-hi) 0%, var(--neon-lo) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 0 10px var(--neon-glow);
 }
 
 .cell {
@@ -512,7 +523,7 @@ body {
   height: 38%;
   margin: -19% 0 0 -19%;
   border-radius: 0.2rem;
-  background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
+  background: linear-gradient(145deg, var(--neon-hi, #ffe566) 0%, var(--neon-lo, #f0c42e) 100%);
   box-shadow: 0 0 6px rgba(255, 138, 92, 0.35);
   animation: shard-fly 0.52s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
@@ -552,9 +563,14 @@ body {
 }
 
 .cell.filled {
-  background: linear-gradient(145deg, #f0dfb0 0%, #d4bc7a 100%);
-  /* Soft outline only — hard inset bottom edge looked like a crop. */
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  /* Locked tiles keep the neon they had while falling. */
+  --neon-hi: #ffe566;
+  --neon-lo: #f0c42e;
+  --neon-glow: rgba(255, 229, 102, 0.35);
+  background: linear-gradient(145deg, var(--neon-hi) 0%, var(--neon-lo) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 0 10px var(--neon-glow);
 }
 
 .word-bar {

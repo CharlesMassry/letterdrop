@@ -33,10 +33,11 @@ Then open http://127.0.0.1:3847/
 ## How to play
 
 1. **Move** with `←` `→` `↓` (on-screen controls on touch).
-2. **↑** / **X** rotates; **Space** hard-drops.
-3. **Line up** letters in a row or column — dictionary words score automatically when a piece lands (and after cascades).
-4. Cleared letters disintegrate; remaining tiles **glide** down into place.
-5. When the board fills (no room to spawn), see your score and play again.
+2. **↑** / **X** rotates; **Space** hard-drops (locks immediately).
+3. When a piece **rests** on the floor or another tile, you get **0.5s** to slide/rotate before it locks. A successful move resets the timer; moving off a ledge clears it and falling resumes.
+4. **Line up** letters in a row or column — dictionary words score automatically when a piece lands (and after cascades).
+5. Cleared letters disintegrate; remaining tiles **glide** down into place.
+6. When the board fills (no room to spawn), see your score and play again.
 
 ## Stack
 

@@ -6,6 +6,8 @@
   var ROWS = 12;
   var INITIAL_DROP_MS = 900;
   var MIN_DROP_MS = 350;
+  /** Classic Tetris-style lock delay once a piece is resting. */
+  var LOCK_DELAY_MS = 500;
   /** How long the disintegration animation runs before gravity. */
   var CLEAR_ANIM_MS = 520;
   /** Base ms per full cell of cascade fall (eased glide). */
@@ -242,6 +244,7 @@
   function lockAtRow(state, row) {
     if (!state.active) return;
     state.active.row = row;
+    clearLockDelay(state);
     lockAndSpawn(state);
   }
 
@@ -553,6 +556,8 @@
       wordsFound: 0,
       foundWords: [],
       dropIntervalMs: INITIAL_DROP_MS,
+      /** @type {null|number} ms left before a resting piece locks; null when airborne */
+      lockDelayRemaining: null,
       feedback: null,
       feedbackKind: null,
       endReason: null,
@@ -561,6 +566,24 @@
       settling: null,
       spawnAfterClear: false,
     };
+  }
+
+  function clearLockDelay(state) {
+    state.lockDelayRemaining = null;
+  }
+
+  function armLockDelay(state) {
+    state.lockDelayRemaining = LOCK_DELAY_MS;
+  }
+
+  /** After a successful slide/rotate: reset delay if still grounded, else clear. */
+  function afterSuccessfulShift(state) {
+    if (!state.active) {
+      clearLockDelay(state);
+      return;
+    }
+    if (canMoveDown(state.board, state.active)) clearLockDelay(state);
+    else armLockDelay(state);
   }
 
   function clearingKeySet(state) {
@@ -683,6 +706,7 @@
 
   function spawnNext(state) {
     if (state.phase !== 'playing') return;
+    clearLockDelay(state);
     if (isBoardFull(state.board)) {
       endGame(state, 'full');
       return;
@@ -692,6 +716,7 @@
   }
 
   function lockAndSpawn(state) {
+    clearLockDelay(state);
     if (state.active) {
       lockPiece(state.board, state.active);
       state.active = null;
@@ -714,41 +739,78 @@
     state.settling = null;
     state.spawnAfterClear = false;
     state.dropIntervalMs = INITIAL_DROP_MS;
+    clearLockDelay(state);
     state.feedback = 'Line up a dictionary word in a row or column to score.';
     state.feedbackKind = 'info';
     state.endReason = null;
     state.active = spawnPiece(state.board);
   }
 
+  /**
+   * Gravity step. When the piece cannot fall, arm lock delay instead of locking.
+   * Returns true if the piece moved down.
+   */
   function tickDrop(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
-    if (!tryMoveDown(state.board, state.active)) lockAndSpawn(state);
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) {
+      return false;
+    }
+    if (tryMoveDown(state.board, state.active)) {
+      clearLockDelay(state);
+      return true;
+    }
+    if (state.lockDelayRemaining === null) armLockDelay(state);
+    return false;
+  }
+
+  /**
+   * Countdown lock delay while grounded. Locks and returns true when time runs out.
+   */
+  function advanceLockDelay(state, dt) {
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) {
+      return false;
+    }
+    if (canMoveDown(state.board, state.active)) {
+      clearLockDelay(state);
+      return false;
+    }
+    if (state.lockDelayRemaining === null) armLockDelay(state);
+    state.lockDelayRemaining -= dt;
+    if (state.lockDelayRemaining > 0) return false;
+    lockAndSpawn(state);
+    return true;
   }
 
   function hardDrop(state) {
     if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
     while (tryMoveDown(state.board, state.active)) { /* fall */ }
+    clearLockDelay(state);
     lockAndSpawn(state);
   }
 
   function moveLeft(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
-    tryMoveHorizontal(state.board, state.active, -1);
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return false;
+    if (!tryMoveHorizontal(state.board, state.active, -1)) return false;
+    afterSuccessfulShift(state);
+    return true;
   }
 
   function moveRight(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
-    tryMoveHorizontal(state.board, state.active, 1);
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return false;
+    if (!tryMoveHorizontal(state.board, state.active, 1)) return false;
+    afterSuccessfulShift(state);
+    return true;
   }
 
   function softDrop(state) {
     if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
-    if (!tryMoveDown(state.board, state.active)) lockAndSpawn(state);
+    tickDrop(state);
   }
 
   function rotate(state) {
-    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return;
-    tryRotate(state.board, state.active);
+    if (state.phase !== 'playing' || !state.active || state.clearing || state.settling) return false;
+    if (!tryRotate(state.board, state.active)) return false;
+    afterSuccessfulShift(state);
+    return true;
   }
 
   window.Letterdrop = {
@@ -761,6 +823,8 @@
     startGame: startGame,
     endGame: endGame,
     tickDrop: tickDrop,
+    advanceLockDelay: advanceLockDelay,
+    LOCK_DELAY_MS: LOCK_DELAY_MS,
     hardDrop: hardDrop,
     canMoveDown: function (state) {
       return canMoveDown(state.board, state.active);

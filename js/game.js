@@ -292,11 +292,14 @@
   }
 
   /**
-   * Remove cells and apply support-based column gravity.
-   * Every column is packed so no tile stays floating (gap below = fall).
-   * Moves list includes ONLY tiles whose row actually changes — grounded
-   * stacks (already resting on the floor / a tile below) are omitted so the
-   * UI leaves them still. Neon travels with each tile object.
+   * Remove cleared cells, then settle only tiles that are not attached to the
+   * floor via an orthogonally connected grounded structure.
+   *
+   * - Grounded = reachable from any bottom-row tile through 4-connected tiles.
+   *   Overhangs that are still part of that structure stay put (no column pack).
+   * - Unattached tiles fall down their column until they rest on the floor or
+   *   another tile. Only tiles whose row changes are listed in moves (for UI).
+   * Neon travels with each tile object.
    */
   function removeCellsAndApplyGravity(board, cells) {
     var removed = [];
@@ -310,32 +313,74 @@
     for (i = 0; i < cells.length; i++) {
       var gone = board[cells[i].row] && board[cells[i].row][cells[i].col];
       if (gone) removed.push(tileLetter(gone));
+      board[cells[i].row][cells[i].col] = null;
     }
+
+    // Mark every tile attached (4-connected) to the floor.
+    var grounded = {};
+    var queue = [];
+    var qh = 0;
     for (c = 0; c < COLS; c++) {
-      var stack = [];
-      for (r = ROWS - 1; r >= 0; r--) {
-        if (toRemove[r + ',' + c]) continue;
-        if (board[r][c]) stack.push({ tile: board[r][c], fromRow: r });
-      }
-      for (r = 0; r < ROWS; r++) board[r][c] = null;
-      for (i = 0; i < stack.length; i++) {
-        var toRow = ROWS - 1 - i;
-        var tile = stack[i].tile;
-        board[toRow][c] = tile;
-        // Only animate tiles that lost support / actually drop.
-        if (stack[i].fromRow !== toRow) {
-          var fall = toRow - stack[i].fromRow;
-          moves.push({
-            letter: tileLetter(tile),
-            neon: tileNeon(tile),
-            col: c,
-            fromRow: stack[i].fromRow,
-            toRow: toRow,
-            durationMs: settleDurationForFall(fall),
-          });
-        }
+      if (board[ROWS - 1][c]) {
+        key = ROWS - 1 + ',' + c;
+        grounded[key] = true;
+        queue.push({ row: ROWS - 1, col: c });
       }
     }
+    var dirs = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ];
+    while (qh < queue.length) {
+      var cur = queue[qh++];
+      for (i = 0; i < dirs.length; i++) {
+        var nr = cur.row + dirs[i][0];
+        var nc = cur.col + dirs[i][1];
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+        if (!board[nr][nc]) continue;
+        key = nr + ',' + nc;
+        if (grounded[key]) continue;
+        grounded[key] = true;
+        queue.push({ row: nr, col: nc });
+      }
+    }
+
+    // Lift unattached tiles, then drop them bottom-first onto support.
+    var floaters = [];
+    for (r = 0; r < ROWS; r++) {
+      for (c = 0; c < COLS; c++) {
+        if (!board[r][c]) continue;
+        key = r + ',' + c;
+        if (grounded[key]) continue;
+        floaters.push({ tile: board[r][c], fromRow: r, col: c });
+        board[r][c] = null;
+      }
+    }
+    floaters.sort(function (a, b) {
+      if (b.fromRow !== a.fromRow) return b.fromRow - a.fromRow;
+      return a.col - b.col;
+    });
+
+    for (i = 0; i < floaters.length; i++) {
+      var f = floaters[i];
+      var toRow = f.fromRow;
+      while (toRow + 1 < ROWS && !board[toRow + 1][f.col]) toRow += 1;
+      board[toRow][f.col] = f.tile;
+      if (toRow !== f.fromRow) {
+        var fall = toRow - f.fromRow;
+        moves.push({
+          letter: tileLetter(f.tile),
+          neon: tileNeon(f.tile),
+          col: f.col,
+          fromRow: f.fromRow,
+          toRow: toRow,
+          durationMs: settleDurationForFall(fall),
+        });
+      }
+    }
+
     return { removed: removed, moves: moves };
   }
 

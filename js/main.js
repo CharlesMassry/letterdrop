@@ -641,7 +641,7 @@
       '<button type="button" class="btn" data-action="down">↓</button>' +
       '<button type="button" class="btn" data-action="right">→</button>' +
       '</div>' +
-      '<p class="hint-keys">Arrows move · ↑ rotate · Space drop · line up words to score</p>' +
+      '<p class="hint-keys">Arrows move · ↑ rotate · Space drop · 0.5s slide after landing</p>' +
       '</main>'
     );
   }
@@ -929,6 +929,12 @@
       !state.settling &&
       !hardDropAnim
     ) {
+      // While resting, gravity ticks stop — lock delay owns the lock.
+      if (!G.canMoveDown(state)) {
+        dropAccum = 0;
+        G.tickDrop(state);
+        break;
+      }
       dropAccum -= interval;
       var before = state.active;
       G.tickDrop(state);
@@ -949,12 +955,15 @@
       lastTs = ts;
 
       var prevPhase = state.phase;
+      var prevActive = state.active;
 
       if (hardDropAnim) {
         finishHardDropIfDue(ts);
       } else if (!state.clearing && !state.settling) {
         dropAccum += dt;
         if (processDropTicks()) markDirty(true);
+        if (G.advanceLockDelay(state, dt)) markDirty(true);
+        else if (state.active !== prevActive) markDirty(true);
       }
 
       if (state.phase !== prevPhase) markDirty(true);

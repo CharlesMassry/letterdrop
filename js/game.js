@@ -128,13 +128,35 @@
     return out;
   }
 
+  /** Neon faces for the active falling piece — one random pick per tetromino. */
+  var NEON_PALETTE = [
+    { hi: '#ff5ec8', lo: '#ff2a9e', glow: 'rgba(255, 94, 200, 0.55)' }, // hot pink
+    { hi: '#5ce1ff', lo: '#00b8e6', glow: 'rgba(92, 225, 255, 0.55)' }, // cyan
+    { hi: '#b8ff3c', lo: '#7aef00', glow: 'rgba(184, 255, 60, 0.5)' }, // lime
+    { hi: '#c77dff', lo: '#9b4dff', glow: 'rgba(199, 125, 255, 0.55)' }, // violet
+    { hi: '#ff9f43', lo: '#ff6b00', glow: 'rgba(255, 159, 67, 0.55)' }, // orange
+    { hi: '#4dffa6', lo: '#00e676', glow: 'rgba(77, 255, 166, 0.5)' }, // mint
+    { hi: '#ffe566', lo: '#ffd000', glow: 'rgba(255, 229, 102, 0.55)' }, // electric yellow
+    { hi: '#ff6b6b', lo: '#ff3344', glow: 'rgba(255, 107, 107, 0.55)' }, // coral red
+  ];
+
+  function randomNeon() {
+    return NEON_PALETTE[Math.floor(Math.random() * NEON_PALETTE.length)];
+  }
+
   function createPiece(shape, row, col) {
     var offsets = SHAPES[shape];
     var cells = [];
     for (var i = 0; i < offsets.length; i++) {
       cells.push({ dr: offsets[i][0], dc: offsets[i][1], letter: randomLetter() });
     }
-    return { shape: shape, row: row, col: col, cells: normalizeCells(cells) };
+    return {
+      shape: shape,
+      row: row,
+      col: col,
+      cells: normalizeCells(cells),
+      neon: randomNeon(),
+    };
   }
 
   function createEmptyBoard() {

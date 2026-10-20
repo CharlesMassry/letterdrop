@@ -172,6 +172,7 @@
     var baseRow = state.active.row;
     var i;
 
+    var neon = state.active.neon || null;
     if (layer.childNodes.length !== cells.length) {
       var html = '';
       for (i = 0; i < cells.length; i++) {
@@ -196,8 +197,14 @@
     }
 
     for (i = 0; i < cells.length; i++) {
+      var tile = layer.childNodes[i];
       var fracRow = vRow + (cells[i].row - baseRow);
-      placeMotionTile(layer.childNodes[i], fracRow, cells[i].col);
+      placeMotionTile(tile, fracRow, cells[i].col);
+      if (neon) {
+        tile.style.setProperty('--neon-hi', neon.hi);
+        tile.style.setProperty('--neon-lo', neon.lo);
+        tile.style.setProperty('--neon-glow', neon.glow);
+      }
     }
   }
 

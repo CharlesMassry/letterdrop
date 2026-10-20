@@ -144,9 +144,29 @@
     return NEON_PALETTE[Math.floor(Math.random() * NEON_PALETTE.length)];
   }
 
+  /** Board cells are null or { letter, neon }. Accept legacy bare strings. */
+  function tileLetter(cell) {
+    if (!cell) return null;
+    if (typeof cell === 'string') return cell;
+    return cell.letter || null;
+  }
+
+  function tileNeon(cell) {
+    if (!cell || typeof cell === 'string') return null;
+    return cell.neon || null;
+  }
+
+  function makeTile(letter, neon) {
+    return {
+      letter: String(letter).toUpperCase(),
+      neon: neon || randomNeon(),
+    };
+  }
+
   function createPiece(shape, row, col) {
     var offsets = SHAPES[shape];
     var cells = [];
+    var neon = randomNeon();
     for (var i = 0; i < offsets.length; i++) {
       cells.push({ dr: offsets[i][0], dc: offsets[i][1], letter: randomLetter() });
     }
@@ -155,7 +175,7 @@
       row: row,
       col: col,
       cells: normalizeCells(cells),
-      neon: randomNeon(),
+      neon: neon,
     };
   }
 
@@ -192,10 +212,11 @@
 
   function lockPiece(board, piece) {
     var abs = absoluteCells(piece);
+    var neon = piece.neon || randomNeon();
     for (var i = 0; i < abs.length; i++) {
       var a = abs[i];
       if (a.row >= 0 && a.row < ROWS && a.col >= 0 && a.col < COLS) {
-        board[a.row][a.col] = a.letter;
+        board[a.row][a.col] = makeTile(a.letter, neon);
       }
     }
   }
@@ -289,24 +310,26 @@
       if (cells[i].col >= 0 && cells[i].col < COLS) affectedCol[cells[i].col] = true;
     }
     for (i = 0; i < cells.length; i++) {
-      var letter = board[cells[i].row] && board[cells[i].row][cells[i].col];
-      if (letter) removed.push(letter);
+      var gone = board[cells[i].row] && board[cells[i].row][cells[i].col];
+      if (gone) removed.push(tileLetter(gone));
     }
     for (c = 0; c < COLS; c++) {
       if (!affectedCol[c]) continue; // untouched columns: leave every tile where it is
       var stack = [];
       for (r = ROWS - 1; r >= 0; r--) {
         if (toRemove[r + ',' + c]) continue;
-        if (board[r][c]) stack.push({ letter: board[r][c], fromRow: r });
+        if (board[r][c]) stack.push({ tile: board[r][c], fromRow: r });
       }
       for (r = 0; r < ROWS; r++) board[r][c] = null;
       for (i = 0; i < stack.length; i++) {
         var toRow = ROWS - 1 - i;
-        board[toRow][c] = stack[i].letter;
+        var tile = stack[i].tile;
+        board[toRow][c] = tile;
         if (stack[i].fromRow !== toRow) {
           var fall = toRow - stack[i].fromRow;
           moves.push({
-            letter: stack[i].letter,
+            letter: tileLetter(tile),
+            neon: tileNeon(tile),
             col: c,
             fromRow: stack[i].fromRow,
             toRow: toRow,
@@ -369,7 +392,7 @@
     for (r = 0; r < ROWS; r++) {
       run = [];
       for (c = 0; c <= COLS; c++) {
-        var hLetter = c < COLS ? board[r][c] : null;
+        var hLetter = c < COLS ? tileLetter(board[r][c]) : null;
         if (hLetter) run.push({ row: r, col: c, letter: hLetter });
         else if (run.length) {
           considerRun(run);
@@ -380,7 +403,7 @@
     for (c = 0; c < COLS; c++) {
       run = [];
       for (r = 0; r <= ROWS; r++) {
-        var vLetter = r < ROWS ? board[r][c] : null;
+        var vLetter = r < ROWS ? tileLetter(board[r][c]) : null;
         if (vLetter) run.push({ row: r, col: c, letter: vLetter });
         else if (run.length) {
           considerRun(run);
@@ -494,8 +517,16 @@
     for (i = 0; i < cells.length; i++) {
       var row = cells[i].row;
       var col = cells[i].col;
-      var letter = state.board[row] && state.board[row][col];
-      if (letter) snapshot.push({ row: row, col: col, letter: letter });
+      var cell = state.board[row] && state.board[row][col];
+      var letter = tileLetter(cell);
+      if (letter) {
+        snapshot.push({
+          row: row,
+          col: col,
+          letter: letter,
+          neon: tileNeon(cell),
+        });
+      }
     }
     if (snapshot.length === 0) return false;
 
@@ -666,9 +697,15 @@
     findLinedUpWords: findLinedUpWords,
     isDictionaryWord: isDictionaryWord,
     activeCellMap: activeCellMap,
+    tileLetter: tileLetter,
+    tileNeon: tileNeon,
+    makeTile: makeTile,
     plant: function (state, cells) {
       for (var i = 0; i < cells.length; i++) {
-        state.board[cells[i].row][cells[i].col] = String(cells[i].letter).toUpperCase();
+        state.board[cells[i].row][cells[i].col] = makeTile(
+          cells[i].letter,
+          cells[i].neon || null
+        );
       }
     },
   };
